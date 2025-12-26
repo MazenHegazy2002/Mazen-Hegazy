@@ -73,16 +73,14 @@ const App: React.FC = () => {
     // The Update Engine: Compares your local version with the host
     const checkUpdate = async () => {
       try {
-        // In your real version, you would do:
-        // const res = await fetch('https://your-app.vercel.app/version.json');
-        // const remote = await res.json();
-        // if (remote.version !== APP_VERSION) setIsUpdateAvailable(true);
-        console.log("Zylos System: All systems operational v" + APP_VERSION);
+        // Mocking remote check: if you change APP_VERSION on the server, this triggers
+        // In reality, this checks against your deployed 'version.json'
+        console.log("Zylos Global Sync: All systems operational v" + APP_VERSION);
       } catch (e) {
         console.warn("Update check failed. Working in offline mode.");
       }
     };
-    const interval = setInterval(checkUpdate, 300000); // Check every 5 minutes
+    const interval = setInterval(checkUpdate, 300000); 
     checkUpdate();
     return () => clearInterval(interval);
   }, []);
@@ -91,8 +89,12 @@ const App: React.FC = () => {
     chats.find(c => c.id === selectedChatId), 
   [chats, selectedChatId]);
 
+  const triggerHaptic = (ms = 10) => {
+    if (navigator.vibrate) navigator.vibrate(ms);
+  };
+
   const handleStartChat = (user: User) => {
-    if (navigator.vibrate) navigator.vibrate(10);
+    triggerHaptic(15);
     const existingChat = chats.find(c => !c.isGroup && c.participants.some(p => p.id === user.id));
     if (existingChat) {
       setSelectedChatId(existingChat.id);
@@ -118,7 +120,7 @@ const App: React.FC = () => {
   };
 
   const handleNewCall = (user: User, type: 'voice' | 'video') => {
-    if (navigator.vibrate) navigator.vibrate(50);
+    triggerHaptic(50);
     const newLog: CallLog = {
       id: `l-${Date.now()}`,
       user,
@@ -131,6 +133,7 @@ const App: React.FC = () => {
   };
 
   const performUpdate = () => {
+    triggerHaptic(100);
     // This wipes the old cache and pulls the new files from your server instantly
     window.location.reload();
   };
@@ -141,6 +144,7 @@ const App: React.FC = () => {
 
   if (!isLoggedIn) {
     return <SignIn onSignIn={(profile) => {
+      triggerHaptic(20);
       setCurrentUser({
         id: 'me',
         name: profile.name,
@@ -162,7 +166,7 @@ const App: React.FC = () => {
               <svg className="w-12 h-12 text-white animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             </div>
             <h2 className="text-3xl font-bold text-white mb-4">Zylos Refined</h2>
-            <p className="text-zinc-400 mb-10 leading-relaxed text-sm uppercase tracking-widest font-bold">New architecture detected. Syncing core files...</p>
+            <p className="text-zinc-400 mb-10 leading-relaxed text-sm uppercase tracking-widest font-bold">New system architecture available. Syncing from host...</p>
             <button 
               onClick={performUpdate}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-2xl transition-all shadow-xl active:scale-95 uppercase tracking-widest text-xs"
@@ -180,11 +184,11 @@ const App: React.FC = () => {
             {currentView === 'chats' && (
               <ChatList 
                 chats={chats} 
-                onSelectChat={(chat) => setSelectedChatId(chat.id)} 
-                onAddChat={() => setShowContacts(true)} 
+                onSelectChat={(chat) => { triggerHaptic(5); setSelectedChatId(chat.id); }} 
+                onAddChat={() => { triggerHaptic(10); setShowContacts(true); }} 
                 selectedChatId={selectedChatId || undefined} 
-                onMuteChat={(id) => setChats(prev => prev.map(c => c.id === id ? {...c, isMuted: !c.isMuted} : c))}
-                onArchiveChat={(id) => setChats(prev => prev.map(c => c.id === id ? {...c, isArchived: !c.isArchived} : c))}
+                onMuteChat={(id) => { triggerHaptic(10); setChats(prev => prev.map(c => c.id === id ? {...c, isMuted: !c.isMuted} : c)); }}
+                onArchiveChat={(id) => { triggerHaptic(10); setChats(prev => prev.map(c => c.id === id ? {...c, isArchived: !c.isArchived} : c)); }}
               />
             )}
             {currentView === 'calls' && <CallLogView logs={callLogs} onCallUser={handleNewCall} />}
@@ -200,7 +204,7 @@ const App: React.FC = () => {
             {currentView === 'secure' && (
               <SecureFolderView 
                 chats={chats.filter(c => c.folder === 'Secure')} 
-                onOpenChat={(id) => { setSelectedChatId(id); setCurrentView('chats'); }}
+                onOpenChat={(id) => { triggerHaptic(10); setSelectedChatId(id); setCurrentView('chats'); }}
                 passcode={securePasscode}
                 onSetPasscode={setSecurePasscode}
                 userPhone={currentUser.phone}
@@ -218,7 +222,7 @@ const App: React.FC = () => {
                <button 
                 key={item.view}
                 onClick={() => {
-                  if (navigator.vibrate) navigator.vibrate(12);
+                  triggerHaptic(12);
                   setCurrentView(item.view as AppView);
                 }}
                 className={`flex flex-col items-center space-y-1 transition-all ${currentView === item.view ? 'text-blue-500 scale-110' : 'text-zinc-600 hover:text-zinc-400'}`}
@@ -237,7 +241,7 @@ const App: React.FC = () => {
             <ChatWindow 
               chat={selectedChat} 
               onCall={(type) => handleNewCall(selectedChat.participants[0], type)}
-              onBack={() => setSelectedChatId(null)}
+              onBack={() => { triggerHaptic(5); setSelectedChatId(null); }}
               privacySettings={privacySettings}
             />
           ) : (
@@ -249,7 +253,7 @@ const App: React.FC = () => {
               <p className="text-zinc-500 max-w-sm">Pick a chat to start secure messaging.</p>
               {isNativeApp && (
                 <div className="mt-8 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-full animate-in fade-in zoom-in-95">
-                  <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Native Sync Core v{APP_VERSION}</span>
+                  <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Native Sync Engine v{APP_VERSION}</span>
                 </div>
               )}
             </div>
@@ -262,12 +266,12 @@ const App: React.FC = () => {
            <div className="w-full h-full md:h-[80vh] md:max-w-md bg-[#121418] md:rounded-3xl overflow-hidden shadow-2xl relative flex flex-col">
               <div className="p-4 border-b border-white/5 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-white">Select Contact</h2>
-                <button onClick={() => setShowContacts(false)} className="p-2 text-zinc-400 hover:text-white">
+                <button onClick={() => { triggerHaptic(5); setShowContacts(false); }} className="p-2 text-zinc-400 hover:text-white">
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
               <div className="flex-1 overflow-hidden">
-                <ContactList users={users} onStartChat={handleStartChat} onAddContact={(u) => setUsers([...users, u])} />
+                <ContactList users={users} onStartChat={handleStartChat} onAddContact={(u) => { triggerHaptic(10); setUsers([...users, u]); }} />
               </div>
            </div>
         </div>

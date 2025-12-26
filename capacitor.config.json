@@ -1,6 +1,6 @@
 
 {
-  "appId": "com.zylos.messaging",
+  "appId": "com.zylos.app",
   "appName": "Zylos",
   "webDir": "dist",
   "bundledWebRuntime": false,
