@@ -32,27 +32,31 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const boot = async () => {
-      // 1. Check for standalone mode (PWA)
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      const hasSeenGuide = localStorage.getItem('zylos_guide_seen');
+      try {
+        // 1. Check for standalone mode (PWA)
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const hasSeenGuide = localStorage.getItem('zylos_guide_seen');
 
-      if (!isStandalone && isMobile && !hasSeenGuide) {
-        setShowInstallGuide(true);
+        if (!isStandalone && isMobile && !hasSeenGuide) {
+          setShowInstallGuide(true);
+        }
+
+        // 2. Load Identity & Data
+        const savedUser = await DB.getUser();
+        if (savedUser) { 
+          setCurrentUser(savedUser); 
+          setIsLoggedIn(true); 
+        }
+        const savedChats = await DB.getChats();
+        setChats(savedChats.length > 0 ? savedChats : MOCK_CHATS);
+        setUsers(MOCK_USERS);
+      } catch (err) {
+        console.error("Boot error:", err);
+      } finally {
+        // Ensure boot screen clears after 1.5s regardless of success/fail
+        setTimeout(() => setIsBooting(false), 1500);
       }
-
-      // 2. Load Identity & Data
-      const savedUser = await DB.getUser();
-      if (savedUser) { 
-        setCurrentUser(savedUser); 
-        setIsLoggedIn(true); 
-      }
-      const savedChats = await DB.getChats();
-      setChats(savedChats.length > 0 ? savedChats : MOCK_CHATS);
-      setUsers(MOCK_USERS);
-
-      // 3. Complete Handshake
-      setTimeout(() => setIsBooting(false), 1500);
     };
     boot();
   }, []);
