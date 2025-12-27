@@ -42,10 +42,10 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       peerRef.current = null;
     }
     // Notify other peer
-    signaling.sendSignal(recipient.id, 'end', {});
+    signaling.sendSignal(currentUser.id, recipient.id, 'end', {});
     setCallState('ended');
     setTimeout(onClose, 800);
-  }, [onClose, recipient.id]);
+  }, [onClose, recipient.id, currentUser.id]);
 
   useEffect(() => {
     const startCall = async () => {
@@ -77,7 +77,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         // Handle ICE candidates
         peer.onicecandidate = (event) => {
           if (event.candidate) {
-            signaling.sendSignal(recipient.id, 'candidate', event.candidate);
+            signaling.sendSignal(currentUser.id, recipient.id, 'candidate', event.candidate);
           }
         };
 
@@ -90,7 +90,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
             await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
             const answer = await peerRef.current.createAnswer();
             await peerRef.current.setLocalDescription(answer);
-            signaling.sendSignal(recipient.id, 'answer', answer);
+            signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
             setCallState('connected');
           } else if (type === 'answer') {
             await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
@@ -108,7 +108,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
           console.log('[CallOverlay] Initiating call to:', recipient.id);
           const offer = await peer.createOffer();
           await peer.setLocalDescription(offer);
-          signaling.sendSignal(recipient.id, 'offer', offer);
+          signaling.sendSignal(currentUser.id, recipient.id, 'offer', offer);
         }
 
         return () => {
