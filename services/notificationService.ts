@@ -1,5 +1,6 @@
 
 import { MessageType } from '../types';
+import { supabase } from './supabase';
 
 /**
  * Zylos Neural Push Service
@@ -7,6 +8,33 @@ import { MessageType } from '../types';
  */
 
 export const NotificationService = {
+  // New Method: Subscribe to Web Push (VAPID)
+  subscribeToPush: async (userId: string) => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      // NOTE: In production, you need a VAPID Public Key here.
+      const sub = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U'
+      });
+      // Serialize keys
+      const p256dh = btoa(String.fromCharCode.apply(null, new Uint8Array(sub.getKey('p256dh') as ArrayBuffer)));
+      const auth = btoa(String.fromCharCode.apply(null, new Uint8Array(sub.getKey('auth') as ArrayBuffer)));
+      // Save to Supabase
+      const { error } = await supabase.from('push_subscriptions').upsert({
+        user_id: userId,
+        endpoint: sub.endpoint,
+        p256dh,
+        auth
+      });
+      if (!error) console.log("[Zylos] Neural Uplink Established (Push Subscribed)");
+    } catch (e) {
+      console.warn("[Zylos] Push Subscription Failed:", e);
+    }
+  },
+
   requestPermission: async () => {
     if (!('Notification' in window)) return false;
     if (Notification.permission === 'granted') return true;
