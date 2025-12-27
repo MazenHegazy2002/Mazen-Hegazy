@@ -46,8 +46,11 @@ const App: React.FC = () => {
           setShowInstallGuide(true);
         }
 
+        // Request usage for Neural Push
+        await NotificationService.requestPermission();
+
         const savedUser = await DB.getUser();
-        if (savedUser) { 
+        if (savedUser) {
           // Re-verify profile in cloud on every boot
           try {
             await cloudSync.upsertProfile(savedUser);
@@ -56,11 +59,11 @@ const App: React.FC = () => {
             console.warn("[Zylos] Registry sync skipped on boot (offline or auth error).");
           }
 
-          setCurrentUser(savedUser); 
-          setIsLoggedIn(true); 
-          
+          setCurrentUser(savedUser);
+          setIsLoggedIn(true);
+
           cloudSync.updatePresence(savedUser.id, 'online');
-          
+
           const [savedChats, savedContacts] = await Promise.all([
             DB.getChats(),
             DB.getContacts()
@@ -99,7 +102,7 @@ const App: React.FC = () => {
     const unsubscribe = cloudSync.subscribeToGlobalMessages(currentUser.id, (payload) => {
       const senderId = payload.sender_id;
       const chatId = payload.chat_id;
-      
+
       const newMessage: Message = {
         id: String(payload.id),
         senderId: senderId,
@@ -183,8 +186,8 @@ const App: React.FC = () => {
 
   if (!isLoggedIn) return <SignIn onSignIn={async (p) => {
     const u = { ...p, authId: p.id, status: 'online' as const };
-    setCurrentUser(u); 
-    setIsLoggedIn(true); 
+    setCurrentUser(u);
+    setIsLoggedIn(true);
     await DB.saveUser(u);
   }} />;
 
@@ -193,25 +196,25 @@ const App: React.FC = () => {
   return (
     <div className="flex h-[100dvh] w-screen bg-[#0b0d10] text-zinc-200 overflow-hidden safe-area-inset">
       <NotificationToast />
-      
+
       <div className={`flex flex-col border-r border-white/5 h-full w-full md:w-[380px] shrink-0 transition-all ${selectedChatId ? 'hidden md:flex' : 'flex'}`}>
         <StatusSection users={users} currentUser={currentUser} />
         <div className="flex-1 overflow-hidden">
           {currentView === 'chats' && (
-            <ChatList 
-              chats={chats} 
-              onSelectChat={(c) => { 
-                setSelectedChatId(c.id); 
-                setChats(prev => prev.map(ch => ch.id === c.id ? {...ch, unreadCount: 0} : ch)); 
+            <ChatList
+              chats={chats}
+              onSelectChat={(c) => {
+                setSelectedChatId(c.id);
+                setChats(prev => prev.map(ch => ch.id === c.id ? { ...ch, unreadCount: 0 } : ch));
               }}
               onAddChat={() => setShowContacts(true)}
               selectedChatId={selectedChatId || undefined}
-              onMuteChat={(id) => setChats(prev => prev.map(c => c.id === id ? {...c, isMuted: !c.isMuted} : c))}
-              onArchiveChat={(id) => setChats(prev => prev.map(c => c.id === id ? {...c, isArchived: !c.isArchived} : c))}
+              onMuteChat={(id) => setChats(prev => prev.map(c => c.id === id ? { ...c, isMuted: !c.isMuted } : c))}
+              onArchiveChat={(id) => setChats(prev => prev.map(c => c.id === id ? { ...c, isArchived: !c.isArchived } : c))}
             />
           )}
           {currentView === 'settings' && (
-            <SettingsView user={currentUser} onUpdateUser={setCurrentUser} privacy={{} as any} onUpdatePrivacy={() => {}} />
+            <SettingsView user={currentUser} onUpdateUser={setCurrentUser} privacy={{} as any} onUpdatePrivacy={() => { }} />
           )}
         </div>
 
@@ -229,7 +232,7 @@ const App: React.FC = () => {
 
       <div className={`flex-1 h-full flex flex-col relative ${selectedChatId ? 'flex' : 'hidden md:flex'}`}>
         {selectedChat ? (
-          <ChatWindow 
+          <ChatWindow
             chat={selectedChat} onBack={() => setSelectedChatId(null)}
             onCall={(type) => setActiveCall({ recipient: selectedChat.participants[0], type })}
             currentUser={currentUser} privacySettings={{} as any} onPlayVoice={handlePlayVoice} playback={playback}
@@ -237,11 +240,11 @@ const App: React.FC = () => {
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-[#0b0d10] pattern-bg">
-             <div className="w-28 h-28 bg-blue-600/5 rounded-[3rem] mb-10 flex items-center justify-center border border-white/5 animate-in zoom-in-95 duration-1000">
-                <svg className="w-12 h-12 text-zinc-800" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-             </div>
-             <h2 className="text-2xl font-bold text-white tracking-tight">Select a Neural Session</h2>
-             <p className="text-zinc-600 text-xs mt-4 max-w-xs leading-relaxed opacity-60">Your profile is synced. Start an end-to-end encrypted session with any contact from the Neural Registry.</p>
+            <div className="w-28 h-28 bg-blue-600/5 rounded-[3rem] mb-10 flex items-center justify-center border border-white/5 animate-in zoom-in-95 duration-1000">
+              <svg className="w-12 h-12 text-zinc-800" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+            </div>
+            <h2 className="text-2xl font-bold text-white tracking-tight">Select a Neural Session</h2>
+            <p className="text-zinc-600 text-xs mt-4 max-w-xs leading-relaxed opacity-60">Your profile is synced. Start an end-to-end encrypted session with any contact from the Neural Registry.</p>
           </div>
         )}
       </div>
@@ -250,35 +253,35 @@ const App: React.FC = () => {
 
       {showContacts && (
         <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-3xl flex items-center justify-center p-4">
-           <div className="w-full max-w-md h-[85vh] bg-[#121418] rounded-[3rem] border border-white/10 shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-12 duration-500">
-              <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#121418]/90 backdrop-blur sticky top-0 z-10">
-                <h2 className="text-xl font-bold text-white tracking-tight">Neural Registry</h2>
-                <button onClick={() => setShowContacts(false)} className="p-3 bg-white/5 rounded-2xl text-zinc-500 hover:text-white transition-all"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>
-              </div>
-              <ContactList 
-                users={users} 
-                currentUser={currentUser}
-                onStartChat={(u) => { 
-                  const chatId = getChatRoomId(currentUser.id, u.id);
-                  const existing = chats.find(c => c.id === chatId);
-                  if (existing) {
-                    setSelectedChatId(existing.id);
-                  } else {
-                    const newChat: Chat = { id: chatId, participants: [u], unreadCount: 0 };
-                    setChats(prev => [newChat, ...prev]); 
-                    setSelectedChatId(newChat.id);
-                  }
-                  setShowContacts(false);
-                }} 
-                onAddContact={(u) => {
-                  setUsers(prev => {
-                    const updated = prev.some(existing => existing.id === u.id) ? prev : [...prev, u];
-                    DB.saveContacts(updated);
-                    return updated;
-                  });
-                }} 
-              />
-           </div>
+          <div className="w-full max-w-md h-[85vh] bg-[#121418] rounded-[3rem] border border-white/10 shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-12 duration-500">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#121418]/90 backdrop-blur sticky top-0 z-10">
+              <h2 className="text-xl font-bold text-white tracking-tight">Neural Registry</h2>
+              <button onClick={() => setShowContacts(false)} className="p-3 bg-white/5 rounded-2xl text-zinc-500 hover:text-white transition-all"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <ContactList
+              users={users}
+              currentUser={currentUser}
+              onStartChat={(u) => {
+                const chatId = getChatRoomId(currentUser.id, u.id);
+                const existing = chats.find(c => c.id === chatId);
+                if (existing) {
+                  setSelectedChatId(existing.id);
+                } else {
+                  const newChat: Chat = { id: chatId, participants: [u], unreadCount: 0 };
+                  setChats(prev => [newChat, ...prev]);
+                  setSelectedChatId(newChat.id);
+                }
+                setShowContacts(false);
+              }}
+              onAddContact={(u) => {
+                setUsers(prev => {
+                  const updated = prev.some(existing => existing.id === u.id) ? prev : [...prev, u];
+                  DB.saveContacts(updated);
+                  return updated;
+                });
+              }}
+            />
+          </div>
         </div>
       )}
 
