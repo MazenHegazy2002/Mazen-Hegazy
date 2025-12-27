@@ -80,6 +80,21 @@ export const cloudSync = {
     }
   },
 
+  searchProfiles: async (query: string, phoneMatch: string) => {
+    try {
+      // Find users by name match or exact phone match
+      const { data, error } = await supabase.from('profiles')
+        .select('*')
+        .or(`name.ilike.%${query}%,phone.eq.${phoneMatch}`)
+        .limit(10);
+      
+      if (error && isSchemaMissing(error)) return [];
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
   findRegisteredUsers: async (phones: string[]) => {
     if (!phones.length) return [];
     try {

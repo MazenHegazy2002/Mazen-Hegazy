@@ -10,8 +10,9 @@ import NotificationToast from './components/NotificationToast';
 import GlobalAudioPlayer from './components/GlobalAudioPlayer';
 import MobileAppGuide from './components/MobileAppGuide';
 import { Chat, User, AppView, Message, PlaybackState } from './types';
-import { MOCK_CHATS, MOCK_USERS } from './constants';
+import { MOCK_USERS } from './constants';
 import { DB } from './services/database';
+import { cloudSync } from './services/supabase';
 
 const App: React.FC = () => {
   const [isBooting, setIsBooting] = useState(true);
@@ -45,10 +46,15 @@ const App: React.FC = () => {
         if (savedUser) { 
           setCurrentUser(savedUser); 
           setIsLoggedIn(true); 
+          
+          // Re-sync chats from history instead of just relying on Mock Data
+          const savedChats = await DB.getChats();
+          setChats(savedChats);
+          
+          // Fetch contacts that were locally saved
+          const savedContacts = await DB.getContacts();
+          setUsers(savedContacts.length > 0 ? savedContacts : []);
         }
-        const savedChats = await DB.getChats();
-        setChats(savedChats.length > 0 ? savedChats : MOCK_CHATS);
-        setUsers(MOCK_USERS);
       } catch (err) {
         console.error("Boot error:", err);
       } finally {
@@ -57,6 +63,13 @@ const App: React.FC = () => {
     };
     boot();
   }, []);
+
+  // Persist chats whenever they change
+  useEffect(() => {
+    if (isLoggedIn && chats.length > 0) {
+      DB.saveChats(chats);
+    }
+  }, [chats, isLoggedIn]);
 
   const handlePlayVoice = (message: Message, senderName: string, senderAvatar: string) => {
     if (playback.messageId === message.id) {
@@ -84,7 +97,7 @@ const App: React.FC = () => {
       </div>
       <div className="mt-12 flex flex-col items-center space-y-2 text-center">
         <p className="text-[10px] font-black uppercase text-white tracking-[0.6em]">Zylos Neural Link</p>
-        <p className="text-[8px] font-bold uppercase text-zinc-700 tracking-[0.2em]">Synchronizing...</p>
+        <p className="text-[8px] font-bold uppercase text-zinc-700 tracking-[0.2em]">Synchronizing Identity...</p>
       </div>
     </div>
   );
@@ -149,8 +162,8 @@ const App: React.FC = () => {
              <div className="w-20 h-20 bg-zinc-800/20 rounded-3xl mb-8 flex items-center justify-center border border-white/5 animate-in zoom-in duration-500">
                 <svg className="w-8 h-8 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
              </div>
-             <h2 className="text-lg font-bold text-white">Select a Frequency</h2>
-             <p className="text-zinc-600 text-xs mt-2 max-w-xs">Zylos hybrid messenger combines the speed of light with deep neural encryption.</p>
+             <h2 className="text-lg font-bold text-white">Neural Frequency</h2>
+             <p className="text-zinc-600 text-xs mt-2 max-w-xs">Start a secure conversation from your registry to begin encrypted syncing.</p>
           </div>
         )}
       </div>
@@ -164,18 +177,27 @@ const App: React.FC = () => {
                 <h2 className="text-lg font-bold text-white">Neural Registry</h2>
                 <button onClick={() => setShowContacts(false)} className="p-2 text-zinc-500 hover:text-white transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
               </div>
-              <ContactList users={users} onStartChat={(u) => { 
-                const existing = chats.find(c => c.participants[0]?.id === u.id);
-                if (existing) setSelectedChatId(existing.id);
-                else {
-                  const newChat: Chat = { id: `c-${Date.now()}`, participants: [u], unreadCount: 0 };
-                  setChats([newChat, ...chats]); 
-                  setSelectedChatId(newChat.id);
-                }
-                setShowContacts(false);
-              }} onAddContact={(u) => {
-                setUsers(prev => [...prev, u]);
-              }} />
+              <ContactList 
+                users={users} 
+                onStartChat={(u) => { 
+                  const existing = chats.find(c => c.participants[0]?.id === u.id);
+                  if (existing) {
+                    setSelectedChatId(existing.id);
+                  } else {
+                    const newChat: Chat = { id: `c-${Date.now()}`, participants: [u], unreadCount: 0 };
+                    setChats(prev => [newChat, ...prev]); 
+                    setSelectedChatId(newChat.id);
+                  }
+                  setShowContacts(false);
+                }} 
+                onAddContact={(u) => {
+                  setUsers(prev => {
+                    const updated = [...prev, u];
+                    DB.saveContacts(updated);
+                    return updated;
+                  });
+                }} 
+              />
            </div>
         </div>
       )}
