@@ -147,9 +147,45 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, privacy
                   alert(`❌ ERROR: Failed to Sync\n${e.message || JSON.stringify(e)}`);
                 }
               }}
-              className="w-full bg-orange-600/10 text-orange-500 border border-orange-500/20 font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-orange-600 hover:text-white transition-all"
+              className="w-full bg-orange-600/10 text-orange-500 border border-orange-500/20 font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-orange-600 hover:text-white transition-all mb-3"
             >
               Force Sync Profile
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  alert("Syncing Contact List...");
+                  // 1. Get local contacts
+                  const contacts = await import('../services/database').then(m => m.DB.getContacts());
+                  let updatedCount = 0;
+                  const updatedContacts = [];
+
+                  // 2. Fetch fresh data for each
+                  for (const c of contacts) {
+                    const fresh = await cloudSync.getProfileByPhone(c.phone);
+                    if (fresh && fresh.id !== c.id) {
+                      updatedContacts.push({ ...c, id: fresh.id, avatar: fresh.avatar || c.avatar });
+                      updatedCount++;
+                    } else {
+                      updatedContacts.push(c);
+                    }
+                  }
+
+                  // 3. Save back if changes found
+                  if (updatedCount > 0) {
+                    await import('../services/database').then(m => m.DB.saveContacts(updatedContacts));
+                    alert(`✅ FIXED: Updated ${updatedCount} contacts with new IDs.\nTry sending messages now.`);
+                    window.location.reload(); // Reload to apply to chats
+                  } else {
+                    alert("✅ Contacts are already up to date.");
+                  }
+                } catch (e: any) {
+                  alert(`❌ Error: ${e.message}`);
+                }
+              }}
+              className="w-full bg-blue-600/10 text-blue-500 border border-blue-500/20 font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all"
+            >
+              Resync Contacts
             </button>
           </div>
         </div>
