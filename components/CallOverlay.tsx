@@ -15,6 +15,9 @@ const configuration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
   ]
 };
 
@@ -23,6 +26,12 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+
+  const addLog = (msg: string) => {
+    setLogs(prev => [...prev.slice(-4), msg]); // Keep last 5 logs
+    console.log(`[CallDebug] ${msg}`);
+  };
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -50,23 +59,39 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
   useEffect(() => {
     const startCall = async () => {
       try {
+        addLog("Getting User Media...");
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
           video: type === 'video' ? { facingMode: 'user' } : false
         });
+        addLog("Got Local Stream");
 
         if (localVideoRef.current && type === 'video') {
           localVideoRef.current.srcObject = stream;
         }
 
+        addLog("Creating Peer Connection...");
         const peer = new RTCPeerConnection(configuration);
         peerRef.current = peer;
+
+        // Monitor Connection State
+        peer.oniceconnectionstatechange = () => {
+          addLog(`ICE State: ${peer.iceConnectionState}`);
+          if (peer.iceConnectionState === 'failed') {
+            addLog("ICE FAILED (Need TURN?)");
+          }
+        };
+
+        peer.onconnectionstatechange = () => {
+          addLog(`Conn State: ${peer.connectionState}`);
+        };
 
         // Add local tracks
         stream.getTracks().forEach(track => peer.addTrack(track, stream));
 
         // Handle remote stream
         peer.ontrack = (event) => {
+          addLog("Got Remote Track!");
           setRemoteStream(event.streams[0]);
           if (remoteVideoRef.current) {
             remoteVideoRef.current.srcObject = event.streams[0];
@@ -84,17 +109,17 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         // Listen for signals
         const unsubscribe = signaling.subscribe(currentUser.id, async (type, data) => {
           if (!peerRef.current) return;
-          console.log('[CallOverlay] Signal received:', type);
+          addLog(`Signal: ${type}`);
 
           if (type === 'offer') {
             await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
             const answer = await peerRef.current.createAnswer();
             await peerRef.current.setLocalDescription(answer);
             signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
-            setCallState('connected');
+            // setCallState('connected'); // Wait for track
           } else if (type === 'answer') {
             await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
-            setCallState('connected');
+            // setCallState('connected'); // Wait for track
           } else if (type === 'candidate') {
             await peerRef.current.addIceCandidate(new RTCIceCandidate(data));
           } else if (type === 'end') {
@@ -105,7 +130,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
         // Initiator Logic
         if (!isIncoming) {
-          console.log('[CallOverlay] Initiating call to:', recipient.id);
+          addLog("Initiating Offer...");
           const offer = await peer.createOffer();
           await peer.setLocalDescription(offer);
           signaling.sendSignal(currentUser.id, recipient.id, 'offer', offer);
@@ -117,9 +142,11 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
           if (peerRef.current) peerRef.current.close();
         };
 
-      } catch (err) {
+      } catch (err: any) {
+        addLog(`Error: ${err.message}`);
         console.error("Call Setup Failed:", err);
-        setCallState('ended');
+        // Do not close immediately so user can see error
+        // setCallState('ended');
       }
     };
 
@@ -134,6 +161,13 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
   return (
     <div className="fixed inset-0 z-[1000] bg-[#0b0d10] flex flex-col items-center justify-center animate-in fade-in duration-700">
+
+      {/* DEBUG LOG OVERLAY (Temporary) */}
+      <div className="absolute top-10 left-0 right-0 z-50 pointer-events-none p-4">
+        <div className="bg-black/50 text-[#00ff00] font-mono text-[10px] p-2 rounded backdrop-blur max-w-sm mx-auto">
+          {logs.map((log, i) => <div key={i}>{log}</div>)}
+        </div>
+      </div>
 
       {/* Remote Video (Full Screen) */}
       {type === 'video' && (
