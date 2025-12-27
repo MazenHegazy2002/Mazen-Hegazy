@@ -23,7 +23,13 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
   const fullPhone = formatPhoneDisplay(`+${selectedCountry.code}${phone}`);
   const isPhoneValid = validatePhone(fullPhone);
 
-  const generateUUID = () => {
+  /**
+   * Generates a native UUID compliant with Postgres UUID standards.
+   */
+  const generateNativeUUID = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
       const r = (Math.random() * 16) | 0;
       const v = c === 'x' ? r : (r & 0x3) | 0x8;
@@ -63,7 +69,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
   const handleCodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (code !== generatedCode && code !== "1234") { 
-      alert("Invalid PIN. Check the simulated SMS notification."); 
+      alert("Invalid PIN. Check the top notification!"); 
       return; 
     }
     setShowSimulatedSms(false);
@@ -77,16 +83,19 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
     
     try {
       const existing = await cloudSync.getProfileByPhone(fullPhone);
-      const userId = existing?.id || generateUUID();
+      const userId = existing?.id || generateNativeUUID();
       const profile = { id: userId, phone: fullPhone, name, avatar };
       
-      // CRITICAL: Ensure database entry is created/updated before proceeding
+      // CRITICAL: Synchronously verify database write
       await cloudSync.upsertProfile(profile);
+      
+      // Success - enter the app
       onSignIn(profile);
-    } catch (err) {
-      console.error("Registry Sync Failure:", err);
-      alert("Could not link with Neural Registry. Retrying locally...");
-      onSignIn({ id: generateUUID(), phone: fullPhone, name, avatar });
+    } catch (err: any) {
+      console.error("[Zylos] Fatal Sync Error:", err);
+      // Detailed error UI for user
+      const msg = err?.message || "Check Supabase project settings and RLS policies.";
+      alert(`Identity Registry Error: ${msg}\n\nPlease ensure your Supabase project is active and 'profiles' table exists.`);
     } finally {
       setLoading(false);
     }
@@ -105,7 +114,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
               <span className="text-[10px] text-zinc-600 font-bold">NOW</span>
             </div>
             <p className="text-xs text-zinc-300 mt-1">
-              Your PIN is <span className="bg-blue-600/20 px-2 py-1 rounded-lg text-blue-400 font-mono font-black tracking-widest">{generatedCode}</span>
+              Verification PIN: <span className="bg-blue-600/20 px-2 py-1 rounded-lg text-blue-400 font-mono font-black tracking-widest">{generatedCode}</span>
             </p>
           </div>
         </div>
@@ -117,8 +126,8 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
             <div className="w-20 h-20 bg-blue-600 rounded-[2rem] flex items-center justify-center mb-8 mx-auto shadow-2xl">
               <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A10.003 10.003 0 0012 3v1m0 16v1m0-1a10.003 10.003 0 01-9.253-6.429l-.054-.09M12 11h.01" /></svg>
             </div>
-            <h1 className="text-3xl font-bold text-white mb-3 tracking-tight">Enter Zylos</h1>
-            <p className="text-zinc-500 text-xs mb-10 font-bold uppercase tracking-[0.2em]">Neural Encryption Enabled</p>
+            <h1 className="text-3xl font-bold text-white mb-3 tracking-tight">Welcome</h1>
+            <p className="text-zinc-500 text-[10px] mb-10 font-bold uppercase tracking-[0.3em]">Encrypted Identity Setup</p>
             <form onSubmit={handlePhoneSubmit} className="space-y-5">
               <div className="flex space-x-3">
                 <select 
@@ -133,12 +142,12 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
                   value={phone} 
                   onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
                   className="flex-1 bg-[#1c1f26] border border-white/5 rounded-2xl py-5 px-5 text-white outline-none focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="Registry number"
+                  placeholder="Phone number"
                   required
                 />
               </div>
               <button disabled={loading || !isPhoneValid} className="w-full bg-blue-600 text-white font-bold py-5 rounded-[1.25rem] active:scale-95 transition-all uppercase text-[10px] tracking-[0.3em] shadow-2xl shadow-blue-900/30">
-                {loading ? 'Decrypting...' : 'Initiate Link'}
+                {loading ? 'Decrypting...' : 'Start Handshake'}
               </button>
             </form>
           </div>
@@ -147,14 +156,14 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
         {step === 'code' && (
           <form onSubmit={handleCodeSubmit} className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-700">
             <h1 className="text-3xl font-bold text-white tracking-tight">Handshake</h1>
-            <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.1em]">Verify Neural Identity PIN</p>
+            <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.1em]">Enter PIN from top notification</p>
             <input 
               type="text" maxLength={4} value={code}
               onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
               className="w-full bg-[#1c1f26] border border-white/10 rounded-[2rem] py-8 text-white text-5xl text-center font-mono outline-none focus:ring-2 focus:ring-blue-500/40"
               autoFocus
             />
-            <button className="w-full bg-blue-600 text-white font-bold py-5 rounded-[1.25rem] uppercase text-[10px] tracking-[0.3em] active:scale-95 transition-all">Establish Sync</button>
+            <button className="w-full bg-blue-600 text-white font-bold py-5 rounded-[1.25rem] uppercase text-[10px] tracking-[0.3em] active:scale-95 transition-all">Verify Identity</button>
             <button type="button" onClick={() => setStep('phone')} className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.2em] hover:text-zinc-400">Abort & Restart</button>
           </form>
         )}
@@ -184,7 +193,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
               />
             </div>
             <button disabled={loading} className="w-full bg-blue-600 text-white font-bold py-5 rounded-[1.25rem] uppercase text-[10px] tracking-[0.3em] active:scale-95 transition-all shadow-2xl shadow-blue-900/30">
-              {loading ? 'Synchronizing Registry...' : 'Activate Neural Identity'}
+              {loading ? 'Synchronizing Registry...' : 'Activate Identity'}
             </button>
           </form>
         )}

@@ -34,7 +34,7 @@ const App: React.FC = () => {
   const selectedChatIdRef = useRef<string | null>(null);
   useEffect(() => { selectedChatIdRef.current = selectedChatId; }, [selectedChatId]);
 
-  // BOOT & PRESENCE
+  // BOOT & DATABASE SYNC
   useEffect(() => {
     const boot = async () => {
       try {
@@ -48,10 +48,17 @@ const App: React.FC = () => {
 
         const savedUser = await DB.getUser();
         if (savedUser) { 
+          // Re-verify profile in cloud on every boot
+          try {
+            await cloudSync.upsertProfile(savedUser);
+            console.log("[Zylos] Profile verified in registry.");
+          } catch (e) {
+            console.warn("[Zylos] Registry sync skipped on boot (offline or auth error).");
+          }
+
           setCurrentUser(savedUser); 
           setIsLoggedIn(true); 
           
-          // PRODUCTION PRESENCE UPDATE
           cloudSync.updatePresence(savedUser.id, 'online');
           
           const [savedChats, savedContacts] = await Promise.all([
@@ -69,7 +76,6 @@ const App: React.FC = () => {
     };
     boot();
 
-    // Presence Cleanup
     const handleVisibility = () => {
       const saved = localStorage.getItem('zylos_current_user');
       if (saved) {
@@ -117,7 +123,6 @@ const App: React.FC = () => {
           updatedChats.splice(existingIndex, 1);
           updatedChats.unshift(chat);
         } else {
-          // Check contacts, else fetch profile live
           const contact = users.find(u => u.id === senderId);
           if (contact) {
             const newChat: Chat = {
@@ -169,7 +174,7 @@ const App: React.FC = () => {
       </div>
       <div className="mt-12 flex flex-col items-center space-y-3 text-center px-6">
         <h2 className="text-white font-bold tracking-tighter text-xl">ZYLOS</h2>
-        <p className="text-[9px] font-black uppercase text-blue-500 tracking-[0.5em] animate-pulse">Establishing Secure Neural Handshake</p>
+        <p className="text-[9px] font-black uppercase text-blue-500 tracking-[0.5em] animate-pulse">Checking Neural Link Status</p>
       </div>
     </div>
   );
@@ -236,7 +241,7 @@ const App: React.FC = () => {
                 <svg className="w-12 h-12 text-zinc-800" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
              </div>
              <h2 className="text-2xl font-bold text-white tracking-tight">Select a Neural Session</h2>
-             <p className="text-zinc-600 text-xs mt-4 max-w-xs leading-relaxed opacity-60">Zylos hybrid messenger is ready. Your messages are end-to-end encrypted and synced across your global identity.</p>
+             <p className="text-zinc-600 text-xs mt-4 max-w-xs leading-relaxed opacity-60">Your profile is synced. Start an end-to-end encrypted session with any contact from the Neural Registry.</p>
           </div>
         )}
       </div>

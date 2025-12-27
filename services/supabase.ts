@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Connection Configuration
+// Note: If data isn't appearing, verify that your project's "Anon Key" matches the one below.
 const SUPABASE_URL = "https://rqvoqztaslbzhxlqgkvn.supabase.co"; 
 const SUPABASE_ANON_KEY = "sb_publishable_uFIV--uEdZ7XUkyLnHcl1w_ShTCnGt3";
 
@@ -10,7 +11,10 @@ export const getChatRoomId = (userId1: string, userId2: string) => {
   return [userId1, userId2].sort().join('--');
 };
 
-const isValidUUID = (uuid: string) => {
+/**
+ * Robust UUID validator for Postgres compatibility.
+ */
+export const isValidUUID = (uuid: string) => {
   if (!uuid) return false;
   const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return regex.test(uuid);
@@ -19,11 +23,12 @@ const isValidUUID = (uuid: string) => {
 export const cloudSync = {
   checkHealth: async () => {
     try {
-      const { data, error } = await supabase.from('profiles').select('id').limit(1);
-      if (error) return { ok: false, message: "Registry Offline" };
+      // Test read to check connectivity
+      const { error } = await supabase.from('profiles').select('id').limit(1);
+      if (error) return { ok: false, message: `Link Error: ${error.message}` };
       return { ok: true, message: "Neural Link Active" };
-    } catch {
-      return { ok: false, message: "Link Severed" };
+    } catch (err: any) {
+      return { ok: false, message: "Registry Unreachable" };
     }
   },
 
@@ -38,20 +43,31 @@ export const cloudSync = {
   },
 
   upsertProfile: async (user: any) => {
-    if (!isValidUUID(user.id)) return user;
+    if (!isValidUUID(user.id)) {
+      console.error("[Zylos] Invalid Identity Format:", user.id);
+      throw new Error("Invalid Identity UUID");
+    }
+
     try {
-      const { data, error } = await supabase.from('profiles').upsert({
+      const payload = {
         id: user.id,
         phone: user.phone,
         name: user.name,
         avatar: user.avatar,
         status: 'online',
         last_seen: new Date().toISOString()
-      }, { onConflict: 'id' }).select();
+      };
+
+      const { data, error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' }).select();
       
-      if (error) throw error;
+      if (error) {
+        console.error("[Zylos] Upsert Failed:", error);
+        throw error;
+      }
+      
+      console.log("[Zylos] Identity Synchronized:", data?.[0]?.name);
       return data?.[0] || user;
-    } catch (e) {
+    } catch (e: any) {
       console.error("Critical: Profile Sync Failed", e);
       throw e;
     }
@@ -60,6 +76,7 @@ export const cloudSync = {
   getProfileByPhone: async (phone: string) => {
     try {
       const { data, error } = await supabase.from('profiles').select('*').eq('phone', phone).maybeSingle();
+      if (error) return null;
       return data;
     } catch {
       return null;
@@ -71,6 +88,7 @@ export const cloudSync = {
       const { data } = await supabase.from('profiles')
         .select('*')
         .neq('id', excludeId)
+        .order('last_seen', { ascending: false })
         .limit(50);
       return data || [];
     } catch {
@@ -90,16 +108,6 @@ export const cloudSync = {
     }
   },
 
-  findRegisteredUsers: async (phones: string[]) => {
-    if (!phones.length) return [];
-    try {
-      const { data } = await supabase.from('profiles').select('*').in('phone', phones);
-      return data || [];
-    } catch {
-      return [];
-    }
-  },
-
   pushMessage: async (chatId: string, senderId: string, msg: any, recipientId?: string) => {
     if (!isValidUUID(senderId)) return;
     try {
@@ -110,10 +118,17 @@ export const cloudSync = {
         type: msg.type || 'TEXT',
         timestamp: new Date().toISOString()
       };
-      if (recipientId && isValidUUID(recipientId)) payload.recipient_id = recipientId;
-      await supabase.from('messages').insert(payload);
-    } catch (err) {
-      console.error("[Zylos] Relay Failure:", err);
+      
+      // Only include recipient if valid, otherwise broad-sync
+      if (recipientId && isValidUUID(recipientId)) {
+        payload.recipient_id = recipientId;
+      }
+      
+      const { error } = await supabase.from('messages').insert(payload);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("[Zylos] Relay Failure:", err.message);
+      throw err;
     }
   },
 
@@ -123,7 +138,7 @@ export const cloudSync = {
         .select('*')
         .eq('chat_id', String(chatId))
         .order('timestamp', { ascending: true })
-        .limit(200);
+        .limit(100);
       return data || [];
     } catch {
       return [];
@@ -132,7 +147,7 @@ export const cloudSync = {
 
   subscribeToChat: (chatId: string, userId: string, callback: (payload: any) => void) => {
     try {
-      const channel = supabase.channel(`chat_room_${chatId}`)
+      const channel = supabase.channel(`chat_${chatId}`)
         .on('postgres_changes', { 
           event: 'INSERT', 
           schema: 'public', 
@@ -153,7 +168,7 @@ export const cloudSync = {
   subscribeToGlobalMessages: (userId: string, callback: (payload: any) => void) => {
     if (!isValidUUID(userId)) return () => {};
     try {
-      const channel = supabase.channel(`global_user_${userId}`)
+      const channel = supabase.channel(`global_${userId}`)
         .on('postgres_changes', { 
           event: 'INSERT', 
           schema: 'public', 
@@ -183,7 +198,6 @@ export const cloudSync = {
 
   fetchStatuses: async () => {
     try {
-      // Fetch statuses from the last 24 hours
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { data } = await supabase.from('statuses')
         .select('*, profiles:user_id(name, avatar, phone)')
@@ -198,7 +212,7 @@ export const cloudSync = {
 
   subscribeToStatuses: (callback: (payload: any) => void) => {
     try {
-      const channel = supabase.channel('global_broadcast')
+      const channel = supabase.channel('statuses_broadcast')
         .on('postgres_changes', { 
           event: 'INSERT', 
           schema: 'public', 
