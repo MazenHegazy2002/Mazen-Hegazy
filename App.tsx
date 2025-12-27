@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ChatList from './components/ChatList';
 import ChatWindow from './components/ChatWindow';
 import StatusSection from './components/StatusSection';
@@ -10,7 +10,6 @@ import NotificationToast from './components/NotificationToast';
 import GlobalAudioPlayer from './components/GlobalAudioPlayer';
 import MobileAppGuide from './components/MobileAppGuide';
 import { Chat, User, AppView, Message, PlaybackState } from './types';
-import { MOCK_USERS } from './constants';
 import { DB } from './services/database';
 import { cloudSync } from './services/supabase';
 
@@ -47,13 +46,13 @@ const App: React.FC = () => {
           setCurrentUser(savedUser); 
           setIsLoggedIn(true); 
           
-          // Re-sync chats from history instead of just relying on Mock Data
+          // Re-sync chats from history (Local Storage)
           const savedChats = await DB.getChats();
           setChats(savedChats);
           
           // Fetch contacts that were locally saved
           const savedContacts = await DB.getContacts();
-          setUsers(savedContacts.length > 0 ? savedContacts : []);
+          setUsers(savedContacts);
         }
       } catch (err) {
         console.error("Boot error:", err);
@@ -64,9 +63,9 @@ const App: React.FC = () => {
     boot();
   }, []);
 
-  // Persist chats whenever they change
+  // Sync Chats to DB whenever they change to prevent loss on refresh
   useEffect(() => {
-    if (isLoggedIn && chats.length > 0) {
+    if (isLoggedIn) {
       DB.saveChats(chats);
     }
   }, [chats, isLoggedIn]);
@@ -80,6 +79,12 @@ const App: React.FC = () => {
       });
     }
   };
+
+  const handleUpdateLastMessage = useCallback((chatId: string, lastMessage: Message) => {
+    setChats(prev => prev.map(c => 
+      c.id === chatId ? { ...c, lastMessage, unreadCount: selectedChatId === chatId ? 0 : (c.unreadCount + 1) } : c
+    ));
+  }, [selectedChatId]);
 
   const closeGuide = () => {
     localStorage.setItem('zylos_guide_seen', 'true');
@@ -96,8 +101,8 @@ const App: React.FC = () => {
         </div>
       </div>
       <div className="mt-12 flex flex-col items-center space-y-2 text-center">
-        <p className="text-[10px] font-black uppercase text-white tracking-[0.6em]">Zylos Neural Link</p>
-        <p className="text-[8px] font-bold uppercase text-zinc-700 tracking-[0.2em]">Synchronizing Identity...</p>
+        <p className="text-[10px] font-black uppercase text-white tracking-[0.6em]">Zylos Identity</p>
+        <p className="text-[8px] font-bold uppercase text-zinc-700 tracking-[0.2em]">Synchronizing Registry...</p>
       </div>
     </div>
   );
@@ -156,14 +161,15 @@ const App: React.FC = () => {
             chat={selectedChat} onBack={() => setSelectedChatId(null)}
             onCall={(type) => setActiveCall({ recipient: selectedChat.participants[0], type })}
             currentUser={currentUser} privacySettings={{} as any} onPlayVoice={handlePlayVoice} playback={playback}
+            onUpdateLastMessage={handleUpdateLastMessage}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-[#0b0d10]">
              <div className="w-20 h-20 bg-zinc-800/20 rounded-3xl mb-8 flex items-center justify-center border border-white/5 animate-in zoom-in duration-500">
                 <svg className="w-8 h-8 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
              </div>
-             <h2 className="text-lg font-bold text-white">Neural Frequency</h2>
-             <p className="text-zinc-600 text-xs mt-2 max-w-xs">Start a secure conversation from your registry to begin encrypted syncing.</p>
+             <h2 className="text-lg font-bold text-white">Registry Empty</h2>
+             <p className="text-zinc-600 text-xs mt-2 max-w-xs">Search for your other phone numbers in the registry to start an encrypted sync.</p>
           </div>
         )}
       </div>
@@ -174,17 +180,17 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-2xl flex items-center justify-center p-4">
            <div className="w-full max-w-md h-[80vh] bg-[#121418] rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden flex flex-col">
               <div className="p-6 border-b border-white/5 flex justify-between items-center">
-                <h2 className="text-lg font-bold text-white">Neural Registry</h2>
+                <h2 className="text-lg font-bold text-white">Global Registry</h2>
                 <button onClick={() => setShowContacts(false)} className="p-2 text-zinc-500 hover:text-white transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
               </div>
               <ContactList 
                 users={users} 
                 onStartChat={(u) => { 
-                  const existing = chats.find(c => c.participants[0]?.id === u.id);
+                  const existing = chats.find(c => c.participants.some(p => p.phone === u.phone));
                   if (existing) {
                     setSelectedChatId(existing.id);
                   } else {
-                    const newChat: Chat = { id: `c-${Date.now()}`, participants: [u], unreadCount: 0 };
+                    const newChat: Chat = { id: `c-${u.id}`, participants: [u], unreadCount: 0 };
                     setChats(prev => [newChat, ...prev]); 
                     setSelectedChatId(newChat.id);
                   }
@@ -192,7 +198,7 @@ const App: React.FC = () => {
                 }} 
                 onAddContact={(u) => {
                   setUsers(prev => {
-                    const updated = [...prev, u];
+                    const updated = prev.some(existing => existing.phone === u.phone) ? prev : [...prev, u];
                     DB.saveContacts(updated);
                     return updated;
                   });

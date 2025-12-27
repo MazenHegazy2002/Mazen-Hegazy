@@ -12,10 +12,11 @@ interface ChatWindowProps {
   currentUser: User & { authId?: string };
   onPlayVoice: (message: Message, senderName: string, senderAvatar: string) => void;
   playback: PlaybackState;
+  onUpdateLastMessage: (chatId: string, lastMessage: Message) => void;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ 
-  chat, onCall, onBack, privacySettings, currentUser, onPlayVoice, playback 
+  chat, onCall, onBack, privacySettings, currentUser, onPlayVoice, playback, onUpdateLastMessage
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -46,6 +47,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         isEncrypted: m.type === MessageType.TEXT
       }));
       setMessages(mapped);
+      if (mapped.length > 0) {
+        onUpdateLastMessage(chat.id, mapped[mapped.length - 1]);
+      }
       setLoading(false);
     };
 
@@ -64,12 +68,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       
       setMessages(prev => {
         if (prev.find(m => m.id === newMessage.id)) return prev;
-        return [...prev, newMessage];
+        const next = [...prev, newMessage];
+        onUpdateLastMessage(chat.id, newMessage);
+        return next;
       });
     });
 
     return () => { if (unsubscribe) unsubscribe(); };
-  }, [chat.id, currentAuthId]);
+  }, [chat.id, currentAuthId, onUpdateLastMessage]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -125,6 +131,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
 
     setMessages(prev => [...prev, newMessage]);
+    onUpdateLastMessage(chat.id, newMessage);
     if (type === MessageType.TEXT) setInputText('');
 
     await cloudSync.pushMessage(chat.id, currentAuthId, { content: encryptedContent, type }, recipient.id); 

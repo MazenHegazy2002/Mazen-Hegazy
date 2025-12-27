@@ -1,8 +1,6 @@
+import { User, Chat } from './types';
 
-import React from 'react';
-import { User, Chat, MessageType } from './types';
-
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.2.0';
 
 export interface Country {
   name: string;
@@ -128,40 +126,11 @@ export const COUNTRIES: Country[] = [
   { name: 'Vietnam', code: '84', flag: '🇻🇳' },
 ];
 
-export const MOCK_USERS: User[] = [
-  { id: '11111111-1111-4111-a111-111111111111', name: 'Alex Volkov', phone: '+7 900 123 4567', avatar: 'https://picsum.photos/seed/alex/200', status: 'online' },
-  { id: '22222222-2222-4222-a222-222222222222', name: 'Maria Ivanova', phone: '+7 900 765 4321', avatar: 'https://picsum.photos/seed/maria/200', status: 'last seen recently' },
-  { id: '33333333-3333-4333-a333-333333333333', name: 'Elena Petrova', phone: '+7 911 555 0101', avatar: 'https://picsum.photos/seed/elena/200', status: 'online' },
-  { id: '44444444-4444-4444-a444-444444444444', name: 'Dmitry Sokolov', phone: '+7 905 888 2211', avatar: 'https://picsum.photos/seed/dmitry/200', status: 'offline' },
-];
-
-export const MOCK_CHATS: Chat[] = [
-  {
-    id: 'c1',
-    participants: [MOCK_USERS[0]],
-    unreadCount: 2,
-    lastMessage: {
-      id: 'm1',
-      senderId: MOCK_USERS[0].id,
-      content: 'Can you check the latest report?',
-      type: MessageType.TEXT,
-      timestamp: new Date()
-    }
-  },
-  {
-    id: 'c2',
-    participants: [MOCK_USERS[1]],
-    unreadCount: 0,
-    lastMessage: {
-      id: 'm2',
-      senderId: MOCK_USERS[1].id,
-      content: 'voice_note_placeholder',
-      type: MessageType.VOICE,
-      timestamp: new Date(Date.now() - 3600000),
-      duration: 15
-    }
-  }
-];
+/**
+ * Empty by default for real production users.
+ */
+export const MOCK_USERS: User[] = [];
+export const MOCK_CHATS: Chat[] = [];
 
 export const STICKERS = [
   '🚀', '🔥', '✨', '💎', '🎉', '🎸', '🕹️', '🎨', '🍕', '🐱', '🦄', '🌈'

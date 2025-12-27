@@ -14,13 +14,14 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isCheckingDb, setIsCheckingDb] = useState(false);
   const [registeredPhones, setRegisteredPhones] = useState<Set<string>>(new Set());
   const [globalResults, setGlobalResults] = useState<User[]>([]);
   
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
 
-  // FRIEND DISCOVERY LOGIC
+  // FRIEND DISCOVERY LOGIC (SYNC LOCAL LIST WITH GLOBAL STATUS)
   useEffect(() => {
     const sync = async () => {
       if (users.length === 0) return;
@@ -37,7 +38,7 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
     sync();
   }, [users]);
 
-  // GLOBAL REGISTRY SEARCH
+  // GLOBAL REGISTRY SEARCH (LIVE SEARCH)
   useEffect(() => {
     const searchGlobal = async () => {
       if (search.length < 3) {
@@ -46,11 +47,8 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
       }
       setIsSyncing(true);
       try {
-        // Query Supabase for people matching the name or phone
-        // We look for phone numbers directly or partial name matches
         const formatted = formatPhoneDisplay(search);
         const results = await cloudSync.searchProfiles(search, formatted);
-        // Filter out people already in my local list to avoid duplicates
         const filtered = results.filter(r => !users.some(u => u.phone === r.phone));
         setGlobalResults(filtered);
       } catch (e) {
@@ -71,25 +69,63 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
     );
   }, [users, search]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const formattedPhone = formatPhoneDisplay(newPhone);
-    if (!newName.trim() || !validatePhone(formattedPhone)) {
-      alert("Please provide a valid name and phone number (e.g. +7 900 000 00 00)");
+    
+    if (!validatePhone(formattedPhone)) {
+      alert("Please enter a valid international phone number (e.g. +1 555 123 4567)");
       return;
     }
-    
-    const newUser: User = {
-      id: `u-${Date.now()}`,
-      name: newName,
-      phone: formattedPhone,
-      avatar: `https://picsum.photos/seed/${newName}/200`,
-      status: 'offline'
-    };
-    onAddContact(newUser);
-    setShowAddModal(false);
-    setNewName('');
-    setNewPhone('');
+
+    setIsCheckingDb(true);
+    try {
+      // 1. Check if the user already exists in the global SQL DB
+      const existingProfile = await cloudSync.getProfileByPhone(formattedPhone);
+      
+      let finalUser: User;
+      
+      if (existingProfile) {
+        // 2. Found in Registry - Sync their real data
+        finalUser = {
+          id: existingProfile.id,
+          name: existingProfile.name || newName,
+          phone: existingProfile.phone,
+          avatar: existingProfile.avatar || `https://picsum.photos/seed/${existingProfile.id}/200`,
+          status: 'online'
+        };
+      } else {
+        // 3. Not found - Create a local placeholder (Invited contact)
+        finalUser = {
+          id: `u-${Date.now()}`,
+          name: newName || 'New Contact',
+          phone: formattedPhone,
+          avatar: `https://picsum.photos/seed/${formattedPhone}/200`,
+          status: 'offline'
+        };
+      }
+
+      onAddContact(finalUser);
+      setShowAddModal(false);
+      setNewName('');
+      setNewPhone('');
+      
+      if (existingProfile) {
+        onStartChat(finalUser);
+      }
+    } catch (err) {
+      alert("Neural Registry is currently unreachable. Contact added locally.");
+      onAddContact({
+        id: `u-local-${Date.now()}`,
+        name: newName,
+        phone: formattedPhone,
+        avatar: `https://picsum.photos/seed/${formattedPhone}/200`,
+        status: 'offline'
+      });
+      setShowAddModal(false);
+    } finally {
+      setIsCheckingDb(false);
+    }
   };
 
   return (
@@ -199,12 +235,13 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
            </div>
            <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Full Name</label>
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Display Name (Nickname)</label>
                 <input 
                   type="text" 
                   value={newName} 
                   onChange={e => setNewName(e.target.value)}
                   className="w-full bg-[#1c1f26] rounded-xl py-4 px-4 text-white focus:ring-2 focus:ring-blue-500/50 outline-none"
+                  placeholder="e.g. John Doe"
                   required
                 />
               </div>
@@ -219,7 +256,21 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
                   required
                 />
               </div>
-              <button type="submit" className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/40">Add to Registry</button>
+              <button 
+                type="submit" 
+                disabled={isCheckingDb}
+                className={`w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/40 flex items-center justify-center space-x-2 active:scale-95 transition-all ${isCheckingDb ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {isCheckingDb ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Checking Registry...</span>
+                  </>
+                ) : (
+                  <span>Add to Registry</span>
+                )}
+              </button>
+              <p className="text-[10px] text-zinc-600 text-center italic">Zylos will check if this number is already registered in our global secure database.</p>
            </form>
         </div>
       )}
