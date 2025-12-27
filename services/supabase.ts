@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // Connection Configuration
 // Note: If data isn't appearing, verify that your project's "Anon Key" matches the one below.
-const SUPABASE_URL = "https://rqvoqztaslbzhxlqgkvn.supabase.co"; 
+const SUPABASE_URL = "https://rqvoqztaslbzhxlqgkvn.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_uFIV--uEdZ7XUkyLnHcl1w_ShTCnGt3";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -35,11 +35,11 @@ export const cloudSync = {
   updatePresence: async (userId: string, status: 'online' | 'offline') => {
     if (!isValidUUID(userId)) return;
     try {
-      await supabase.from('profiles').update({ 
-        status, 
-        last_seen: new Date().toISOString() 
+      await supabase.from('profiles').update({
+        status,
+        last_seen: new Date().toISOString()
       }).eq('id', userId);
-    } catch (e) {}
+    } catch (e) { }
   },
 
   upsertProfile: async (user: any) => {
@@ -59,13 +59,13 @@ export const cloudSync = {
       };
 
       const { data, error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' }).select();
-      
+
       if (error) {
         console.error("[Zylos] Upsert Failed:", error);
         // Throw specific error message from Supabase
         throw new Error(`Supabase Error: ${error.message} (Code: ${error.code})`);
       }
-      
+
       console.log("[Zylos] Identity Synchronized:", data?.[0]?.name);
       return data?.[0] || user;
     } catch (e: any) {
@@ -114,18 +114,22 @@ export const cloudSync = {
     if (!isValidUUID(senderId)) return;
     try {
       const payload: any = {
-        chat_id: String(chatId), 
-        sender_id: senderId, 
+        chat_id: String(chatId),
+        sender_id: senderId,
         content: msg.content,
         type: msg.type || 'TEXT',
         timestamp: new Date().toISOString()
       };
-      
+
       // Only include recipient if valid, otherwise broad-sync
-      if (recipientId && isValidUUID(recipientId)) {
+      // MODIFIED: Trust the ID if it is provided, regex might be too strict
+      if (recipientId) {
+        if (!isValidUUID(recipientId)) {
+          console.warn("[Zylos] Invalid Recipient UUID format:", recipientId);
+        }
         payload.recipient_id = recipientId;
       }
-      
+
       const { error } = await supabase.from('messages').insert(payload);
       if (error) throw error;
     } catch (err: any) {
@@ -150,11 +154,11 @@ export const cloudSync = {
   subscribeToChat: (chatId: string, userId: string, callback: (payload: any) => void) => {
     try {
       const channel = supabase.channel(`chat_${chatId}`)
-        .on('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'messages', 
-          filter: `chat_id=eq.${chatId}` 
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `chat_id=eq.${chatId}`
         }, (payload) => {
           if (payload.new.sender_id !== userId) {
             callback(payload.new);
@@ -163,26 +167,26 @@ export const cloudSync = {
         .subscribe();
       return () => { supabase.removeChannel(channel); };
     } catch {
-      return () => {};
+      return () => { };
     }
   },
 
   subscribeToGlobalMessages: (userId: string, callback: (payload: any) => void) => {
-    if (!isValidUUID(userId)) return () => {};
+    if (!isValidUUID(userId)) return () => { };
     try {
       const channel = supabase.channel(`global_${userId}`)
-        .on('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'messages', 
-          filter: `recipient_id=eq.${userId}` 
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `recipient_id=eq.${userId}`
         }, (payload) => {
           callback(payload.new);
         })
         .subscribe();
       return () => { supabase.removeChannel(channel); };
     } catch {
-      return () => {};
+      return () => { };
     }
   },
 
@@ -195,7 +199,7 @@ export const cloudSync = {
         caption: status.caption,
         timestamp: new Date().toISOString()
       });
-    } catch (err) {}
+    } catch (err) { }
   },
 
   fetchStatuses: async () => {
@@ -215,15 +219,15 @@ export const cloudSync = {
   subscribeToStatuses: (callback: (payload: any) => void) => {
     try {
       const channel = supabase.channel('statuses_broadcast')
-        .on('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'statuses' 
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'statuses'
         }, (payload) => callback(payload.new))
         .subscribe();
       return () => { supabase.removeChannel(channel); };
     } catch {
-      return () => {};
+      return () => { };
     }
   }
 };
