@@ -10,7 +10,7 @@ export const NotificationService = {
   requestPermission: async () => {
     if (!('Notification' in window)) return false;
     if (Notification.permission === 'granted') return true;
-    
+
     try {
       const permission = await Notification.requestPermission();
       return permission === 'granted';
@@ -21,7 +21,8 @@ export const NotificationService = {
 
   send: (title: string, body: string, icon?: string) => {
     // 1. Fire Native OS Notification
-    if (Notification.permission === 'granted') {
+    // Only fire if the app is NOT visible (background) or if the user explicitly wants them
+    if (Notification.permission === 'granted' && document.visibilityState !== 'visible') {
       try {
         const options = {
           body: body,
