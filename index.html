@@ -4,11 +4,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Zylos Messaging</title>
+    <title>Zylos | Universal Neural Messenger</title>
     
+    <!-- PWA & Mobile Optimization -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#0f1115">
+    <meta name="apple-mobile-web-app-title" content="Zylos">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0b0d10">
+    <meta name="format-detection" content="telephone=no">
+    
+    <!-- Favicons -->
+    <link rel="apple-touch-icon" href="https://picsum.photos/seed/zylos/192/192">
+    <link rel="icon" type="image/png" href="https://picsum.photos/seed/zylos/32/32">
     <link rel="manifest" href="manifest.json">
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -18,8 +26,9 @@
           font-family: 'Inter', sans-serif; 
           overscroll-behavior-y: contain;
           -webkit-tap-highlight-color: transparent;
-          background-color: #0f1115;
+          background-color: #0b0d10;
           color: #f4f4f5;
+          user-select: none;
         }
         .safe-area-inset {
           padding-top: env(safe-area-inset-top);
@@ -28,9 +37,11 @@
           padding-right: env(safe-area-inset-right);
         }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
+        
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
         
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -52,6 +63,10 @@
           30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
           40%, 60% { transform: translate3d(4px, 0, 0); }
         }
+        
+        /* Smooth View Transitions */
+        .view-enter { opacity: 0; transform: translateY(10px); }
+        .view-enter-active { opacity: 1; transform: translateY(0); transition: all 0.3s ease-out; }
     </style>
 <script type="importmap">
 {
@@ -65,15 +80,15 @@
 }
 </script>
 </head>
-<body class="bg-[#0f1115] overflow-hidden">
+<body class="bg-[#0b0d10] overflow-hidden">
     <div id="root"></div>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('./sw.js').then(reg => {
-            console.log('Zylos Service Worker Registered');
+            console.log('Zylos Neural SW Active');
           }).catch(err => {
-            console.log('SW Registration Failed:', err);
+            console.warn('Neural SW Registration Failed:', err);
           });
         });
       }

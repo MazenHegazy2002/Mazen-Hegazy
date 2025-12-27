@@ -8,22 +8,12 @@ const KEYS = {
   CONTACTS: 'zylos_contacts',
 };
 
-const API_DELAY = 400;
-
 export const DB = {
-  // --- USER OPERATIONS ---
   saveUser: async (user: User): Promise<void> => {
-    // 1. Save Locally for offline access
     localStorage.setItem(KEYS.USER, JSON.stringify(user));
-    
-    // 2. Sync to Online Cloud
-    await cloudSync.upsertProfile({
-      id: user.id,
-      name: user.name,
-      phone: user.phone,
-      avatar: user.avatar,
-      status: user.status
-    });
+    if (user.id && user.id !== 'me') {
+      await cloudSync.upsertProfile(user);
+    }
   },
   
   getUser: async (): Promise<User | null> => {
@@ -31,16 +21,17 @@ export const DB = {
     return data ? JSON.parse(data) : null;
   },
 
-  // --- CONTACT DISCOVERY ---
   discoverContacts: async (localPhones: string[]): Promise<User[]> => {
-    // Queries the Online Registry to see who has signed up
     return await cloudSync.findRegisteredUsers(localPhones);
   },
 
-  // --- CHAT & MESSAGE OPERATIONS ---
   saveChats: async (chats: Chat[]): Promise<void> => {
-    localStorage.setItem(KEYS.CHATS, JSON.stringify(chats));
-    // In a real app, you'd only sync the *diffs* to the cloud here
+    // Only save real chats to local storage, filter out temporary UI states
+    const persistenceChats = chats.map(c => ({
+      ...c,
+      unreadCount: c.unreadCount || 0
+    }));
+    localStorage.setItem(KEYS.CHATS, JSON.stringify(persistenceChats));
   },
   
   getChats: async (): Promise<Chat[]> => {
@@ -48,9 +39,8 @@ export const DB = {
     return data ? JSON.parse(data) : [];
   },
 
-  sendMessage: async (chatId: string, message: Message): Promise<void> => {
-    // Fix: Pass message.senderId as the senderPhone argument
-    await cloudSync.pushMessage(chatId, message.senderId, message);
+  sendMessage: async (chatId: string, authUserId: string, message: any, recipientId?: string): Promise<void> => {
+    await cloudSync.pushMessage(chatId, authUserId, message, recipientId);
   },
 
   saveContacts: async (users: User[]): Promise<void> => {
