@@ -21,6 +21,14 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
 
+  const generateUUID = () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  };
+
   // FRIEND DISCOVERY LOGIC (SYNC LOCAL LIST WITH GLOBAL STATUS)
   useEffect(() => {
     const sync = async () => {
@@ -86,7 +94,7 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
       let finalUser: User;
       
       if (existingProfile) {
-        // 2. Found in Registry - Sync their real data
+        // 2. Found in Registry - Sync their real UUID and data
         finalUser = {
           id: existingProfile.id,
           name: existingProfile.name || newName,
@@ -95,9 +103,9 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
           status: 'online'
         };
       } else {
-        // 3. Not found - Create a local placeholder (Invited contact)
+        // 3. Not found - Create a local placeholder (using a valid UUID format)
         finalUser = {
-          id: `u-${Date.now()}`,
+          id: generateUUID(),
           name: newName || 'New Contact',
           phone: formattedPhone,
           avatar: `https://picsum.photos/seed/${formattedPhone}/200`,
@@ -116,7 +124,7 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
     } catch (err) {
       alert("Neural Registry is currently unreachable. Contact added locally.");
       onAddContact({
-        id: `u-local-${Date.now()}`,
+        id: generateUUID(),
         name: newName,
         phone: formattedPhone,
         avatar: `https://picsum.photos/seed/${formattedPhone}/200`,
