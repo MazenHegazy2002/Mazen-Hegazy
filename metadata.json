@@ -1,6 +1,6 @@
 {
   "name": "Zylos - Hybrid Messaging",
-  "description": "A feature-rich messaging app combining the best of WhatsApp and Telegram with real-time AI-powered calls, status updates, voice notes, and optimized connectivity.",
+  "description": "A feature-rich messaging app combining the best of WhatsApp and Telegram with real-time AI-powered calls, status updates, and voice notes.",
   "requestFramePermissions": [
     "camera",
     "microphone"

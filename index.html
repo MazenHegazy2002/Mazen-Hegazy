@@ -6,12 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Zylos Messaging</title>
     
-    <!-- PWA Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0f1115">
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="https://picsum.photos/seed/zylos/192/192">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -21,6 +18,7 @@
           overscroll-behavior-y: contain;
           -webkit-tap-highlight-color: transparent;
           background-color: #0f1115;
+          color: #f4f4f5;
         }
         .safe-area-inset {
           padding-top: env(safe-area-inset-top);
@@ -33,9 +31,25 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
         
-        /* Mobile Specific Overrides */
-        @media (max-width: 768px) {
-          .custom-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        @keyframes statusProgress {
+          from { width: 0%; }
+          to { width: 100%; }
+        }
+        .status-bar-inner {
+          animation: statusProgress 5s linear forwards;
+        }
+
+        .animate-shake {
+          animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shake {
+          10%, 90% { transform: translate3d(-1px, 0, 0); }
+          20%, 80% { transform: translate3d(2px, 0, 0); }
+          30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+          40%, 60% { transform: translate3d(4px, 0, 0); }
         }
     </style>
 <script type="importmap">
@@ -44,21 +58,13 @@
     "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
     "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
   }
 }
 </script>
 </head>
-<body class="bg-[#0f1115] text-zinc-100 overflow-hidden">
+<body class="bg-[#0f1115] overflow-hidden">
     <div id="root"></div>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js').catch(err => {
-            console.log('ServiceWorker registration failed: ', err);
-          });
-        });
-      }
-    </script>
 </body>
 </html>

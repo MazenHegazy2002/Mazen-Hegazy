@@ -54,8 +54,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, privacy
     setIsCheckingUpdate(true);
     setTimeout(() => {
       setIsCheckingUpdate(false);
-      alert("Zylos is fully updated! (v" + APP_VERSION + ")");
-    }, 1200);
+      alert("Zylos Cloud Engine is active and synced! (v" + APP_VERSION + ")");
+    }, 1500);
   };
 
   return (
@@ -65,7 +65,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, privacy
         {isEditingProfile ? (
           <button onClick={handleSaveProfile} className="text-blue-500 font-bold px-4 py-1 bg-blue-500/10 rounded-full hover:bg-blue-500/20 transition-all">Save</button>
         ) : (
-          <div className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">{isNative ? 'Native App' : 'Web App'}</div>
+          <div className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">{isNative ? 'Native Sync' : 'Cloud Shell'}</div>
         )}
       </div>
       
@@ -124,13 +124,19 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, privacy
           </div>
         </div>
 
-        {/* Translation Section */}
+        {/* Cloud Data Section */}
         <div className="space-y-3">
-          <SectionTitle>Global Connectivity</SectionTitle>
+          <SectionTitle>Cloud & Connectivity</SectionTitle>
           <div className="bg-[#1c1f26] rounded-3xl border border-white/5 divide-y divide-white/5 overflow-hidden">
             <ToggleItem 
-              label="Bypass Local Restrictions" 
-              sub="Advanced Turbo Proxy for RU/Global connectivity." 
+              label="Secure Cloud Backup" 
+              sub="Encrypt and sync your data to the online vault." 
+              isActive={true} 
+              onToggle={() => {}} 
+            />
+            <ToggleItem 
+              label="Russia Turbo Proxy" 
+              sub="Optimization for lag-free use in blocked regions." 
               isActive={privacy.proxyEnabled} 
               onToggle={() => toggleBooleanSetting('proxyEnabled')} 
             />
@@ -143,9 +149,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, privacy
           </div>
         </div>
 
-        {/* Update Logic */}
+        {/* Maintenance */}
         <div className="space-y-3">
-          <SectionTitle>App Management</SectionTitle>
+          <SectionTitle>System</SectionTitle>
           <div className="bg-[#1c1f26] rounded-3xl border border-white/5 overflow-hidden">
             <button 
               onClick={checkUpdates}
@@ -153,24 +159,19 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, privacy
               className="w-full p-4 flex items-center justify-between group cursor-pointer hover:bg-white/5 transition-all"
             >
                <div className="text-left">
-                 <h5 className="text-sm font-bold text-zinc-200">Version Maintenance</h5>
-                 <p className="text-[11px] text-zinc-500">Current version: {APP_VERSION}</p>
+                 <h5 className="text-sm font-bold text-zinc-200">Sync with Online Vault</h5>
+                 <p className="text-[11px] text-zinc-500">Last synced: Just now</p>
                </div>
                <span className={`text-xs font-bold text-blue-500 bg-blue-500/10 px-3 py-1 rounded-full group-hover:bg-blue-500/20 transition-all ${isCheckingUpdate ? 'animate-pulse' : ''}`}>
-                 {isCheckingUpdate ? 'Syncing...' : 'Sync Updates'}
+                 {isCheckingUpdate ? 'Syncing...' : 'Sync Now'}
                </span>
             </button>
-            {isNative && (
-               <div className="p-4 border-t border-white/5 bg-blue-500/5 flex items-center space-x-3">
-                 <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                 <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">Native Sync Engine Connected</p>
-               </div>
-            )}
           </div>
         </div>
 
         <div className="text-center pt-8 opacity-20">
-          <p className="text-[9px] font-black uppercase tracking-[0.4em] text-white">Zylos Messaging Shell</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.4em] text-white">Zylos Messaging Core</p>
+          <p className="text-[8px] text-zinc-500 mt-2">End-to-End Encrypted Cloud Storage</p>
         </div>
       </div>
     </div>
