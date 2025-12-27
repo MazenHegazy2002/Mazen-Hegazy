@@ -17,7 +17,7 @@ export const NotificationService = {
       // NOTE: In production, you need a VAPID Public Key here.
       const sub = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U'
+        applicationServerKey: 'BHM0_hw4UuCbEUQNQ8NyVLsR_2OGS8ZZ6yseFfblMQcixm4F1mHnsQ4JrFXhWLuPSiNtwNVW-i201-qkgIyCgi0'
       });
       // Serialize keys
       const p256dh = btoa(String.fromCharCode.apply(null, new Uint8Array(sub.getKey('p256dh') as ArrayBuffer)));
