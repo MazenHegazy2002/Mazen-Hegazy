@@ -62,13 +62,15 @@ export const cloudSync = {
       
       if (error) {
         console.error("[Zylos] Upsert Failed:", error);
-        throw error;
+        // Throw specific error message from Supabase
+        throw new Error(`Supabase Error: ${error.message} (Code: ${error.code})`);
       }
       
       console.log("[Zylos] Identity Synchronized:", data?.[0]?.name);
       return data?.[0] || user;
     } catch (e: any) {
       console.error("Critical: Profile Sync Failed", e);
+      // Re-throw so UI can catch it
       throw e;
     }
   },
