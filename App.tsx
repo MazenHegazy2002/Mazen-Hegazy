@@ -63,6 +63,8 @@ const App: React.FC = () => {
           setIsLoggedIn(true);
 
           cloudSync.updatePresence(savedUser.id, 'online');
+          // Start background push subscription
+          NotificationService.subscribeToPush(savedUser.id);
 
           const [savedChats, savedContacts] = await Promise.all([
             DB.getChats(),
