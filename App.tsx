@@ -114,7 +114,7 @@ const App: React.FC = () => {
           {currentView === 'chats' && (
             <ChatList 
               chats={chats} 
-              onSelectChat={(c) => { 
+              onSelectChat={(c: Chat) => { 
                 setSelectedChatId(c.id); 
                 setChats(prev => prev.map(ch => ch.id === c.id ? {...ch, unreadCount: 0} : ch)); 
               }}
@@ -145,7 +145,7 @@ const App: React.FC = () => {
         {selectedChat ? (
           <ChatWindow 
             chat={selectedChat} onBack={() => setSelectedChatId(null)}
-            onCall={(t) => setActiveCall({ recipient: selectedChat.participants[0], type: t })}
+            onCall={(t: 'voice' | 'video') => setActiveCall({ recipient: selectedChat.participants[0], type: t })}
             currentUser={currentUser} privacySettings={{} as any} onPlayVoice={handlePlayVoice} playback={playback}
           />
         ) : (
@@ -169,8 +169,8 @@ const App: React.FC = () => {
                 <h2 className="text-lg font-bold text-white">Neural Registry</h2>
                 <button onClick={() => setShowContacts(false)} className="p-2 text-zinc-500 hover:text-white transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
               </div>
-              <ContactList users={users} onStartChat={(u) => { 
-                const existing = chats.find(c => c.participants[0].id === u.id);
+              <ContactList users={users} onStartChat={(u: User) => { 
+                const existing = chats.find(c => c.participants[0]?.id === u.id);
                 if (existing) setSelectedChatId(existing.id);
                 else {
                   const newChat: Chat = { id: `c-${Date.now()}`, participants: [u], unreadCount: 0 };
@@ -178,7 +178,9 @@ const App: React.FC = () => {
                   setSelectedChatId(newChat.id);
                 }
                 setShowContacts(false);
-              }} onAddContact={() => {}} />
+              }} onAddContact={(u: User) => {
+                setUsers(prev => [...prev, u]);
+              }} />
            </div>
         </div>
       )}

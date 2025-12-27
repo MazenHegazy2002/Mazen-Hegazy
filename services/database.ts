@@ -1,5 +1,4 @@
-
-import { User, Chat, Message } from '../types';
+import { User, Chat } from '../types';
 import { cloudSync } from './supabase';
 
 const KEYS = {
@@ -36,7 +35,20 @@ export const DB = {
   
   getChats: async (): Promise<Chat[]> => {
     const data = localStorage.getItem(KEYS.CHATS);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    try {
+      const parsed = JSON.parse(data) as Chat[];
+      // Hydrate Dates
+      return parsed.map(chat => {
+        if (chat.lastMessage && chat.lastMessage.timestamp) {
+          chat.lastMessage.timestamp = new Date(chat.lastMessage.timestamp);
+        }
+        return chat;
+      });
+    } catch (e) {
+      console.error("Failed to load local chats", e);
+      return [];
+    }
   },
 
   sendMessage: async (chatId: string, authUserId: string, message: any, recipientId?: string): Promise<void> => {

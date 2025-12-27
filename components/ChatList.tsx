@@ -1,11 +1,10 @@
-
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Chat, MessageType } from '../types';
 import { decrypt } from '../services/encryptionService';
 
 interface ChatListProps {
   chats: Chat[];
-  onSelectChat: (chat) => void;
+  onSelectChat: (chat: Chat) => void;
   onAddChat: () => void;
   selectedChatId?: string;
   onMuteChat: (id: string) => void;
@@ -40,7 +39,8 @@ const ChatList: React.FC<ChatListProps> = ({
   const folders: (typeof activeFolder)[] = ['All', 'Personal', 'Groups', 'Unread', 'Archived'];
 
   const filteredChats = chats.filter(c => {
-    const nameMatch = (c.name || c.participants[0].name).toLowerCase().includes(search.toLowerCase());
+    const chatName = c.name || (c.participants[0] ? c.participants[0].name : 'Unknown');
+    const nameMatch = chatName.toLowerCase().includes(search.toLowerCase());
     if (!nameMatch) return false;
     
     if (activeFolder !== 'Archived' && c.isArchived) return false;
@@ -78,7 +78,10 @@ const ChatList: React.FC<ChatListProps> = ({
   };
 
   const handleHoldEnd = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
   };
 
   const handleTouchStart = (e: React.TouchEvent | React.MouseEvent, chatId: string) => {
@@ -185,12 +188,12 @@ const ChatList: React.FC<ChatListProps> = ({
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto custom-scrollbar px-2 pb-24 pt-2">
         {filteredChats.map((chat) => {
-          const recipient = chat.participants[0];
+          const recipient = chat.participants[0] || { name: 'Unknown', avatar: '', status: 'offline' };
           const isSelectedItem = selectedIds.has(chat.id);
           const isSelectedForChat = selectedChatId === chat.id;
           const isSwiped = swipedChatId === chat.id;
-          const displayName = chat.isGroup ? chat.name : recipient.name;
-          const displayAvatar = chat.isGroup ? chat.avatar : recipient.avatar;
+          const displayName = chat.isGroup ? (chat.name || 'Group') : recipient.name;
+          const displayAvatar = chat.isGroup ? (chat.avatar || 'https://picsum.photos/seed/group/200') : recipient.avatar;
           
           const lastMsgContent = chat.lastMessage ? (
             chat.lastMessage.type === MessageType.VOICE 
@@ -256,7 +259,6 @@ const ChatList: React.FC<ChatListProps> = ({
                   <div className="flex justify-between items-baseline">
                     <div className="flex items-center space-x-1.5 truncate">
                       <span className={`font-semibold truncate ${isSelectedForChat && !selectionMode ? 'text-white' : 'text-zinc-200'}`}>{displayName}</span>
-                      {/* Fixed SVG title error by using a span wrapper with title attribute instead of placing it on the SVG itself */}
                       <span title="End-to-End Encrypted" className="flex items-center">
                         <svg className="w-3 h-3 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                       </span>
@@ -264,7 +266,7 @@ const ChatList: React.FC<ChatListProps> = ({
                         <svg className="w-3 h-3 text-zinc-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
                       )}
                     </div>
-                    <span className="text-[10px] text-zinc-500 font-medium ml-2 flex-shrink-0">{chat.lastMessage?.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="text-[10px] text-zinc-500 font-medium ml-2 flex-shrink-0">{chat.lastMessage?.timestamp instanceof Date ? chat.lastMessage.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                   </div>
                   <div className="flex justify-between items-center mt-0.5">
                     <p className="text-xs truncate max-w-[180px] opacity-70">
@@ -288,7 +290,7 @@ const ChatList: React.FC<ChatListProps> = ({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setPreviewChat(null)}>
           <div className="w-full max-w-sm bg-[#1c1f26] rounded-[2rem] overflow-hidden shadow-2xl border border-white/10 animate-in zoom-in-95 duration-200">
             <div className="bg-[#2a2d36] p-4 flex items-center space-x-3">
-              <img src={previewChat.isGroup ? previewChat.avatar : previewChat.participants[0].avatar} className="w-10 h-10 rounded-xl object-cover" />
+              <img src={previewChat.isGroup ? (previewChat.avatar || '') : previewChat.participants[0].avatar} className="w-10 h-10 rounded-xl object-cover" />
               <div>
                 <h3 className="text-sm font-bold text-white">{previewChat.isGroup ? previewChat.name : previewChat.participants[0].name}</h3>
                 <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Quick Preview</p>

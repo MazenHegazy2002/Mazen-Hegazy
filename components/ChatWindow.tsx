@@ -30,7 +30,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   
-  const recipient = chat.participants[0];
+  const recipient = chat.participants[0] || { id: 'unknown', name: 'Unknown', avatar: '', status: 'offline' };
   const currentAuthId = currentUser.authId || currentUser.id;
 
   useEffect(() => {
@@ -100,7 +100,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const stopRecording = () => {
     if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
-    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
     setIsRecording(false);
   };
 
@@ -133,7 +136,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     setSummary(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = (window as any).process?.env?.API_KEY || "";
+      const ai = new GoogleGenAI({ apiKey });
       const recentText = messages
         .filter(m => m.type === MessageType.TEXT)
         .slice(-20)
