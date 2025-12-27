@@ -1,4 +1,3 @@
-
 import { createClient } from '@supabase/supabase-js';
 
 // Connection Configuration
@@ -7,10 +6,6 @@ const SUPABASE_ANON_KEY = "sb_publishable_uFIV--uEdZ7XUkyLnHcl1w_ShTCnGt3";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-/**
- * Zylos Production Helper: Standardized Chat ID Generation
- * Ensures Room Parity across all devices.
- */
 export const getChatRoomId = (userId1: string, userId2: string) => {
   return [userId1, userId2].sort().join('--');
 };
@@ -24,12 +19,22 @@ const isValidUUID = (uuid: string) => {
 export const cloudSync = {
   checkHealth: async () => {
     try {
-      const { error } = await supabase.from('profiles').select('id').limit(1);
+      const { data, error } = await supabase.from('profiles').select('id').limit(1);
       if (error) return { ok: false, message: "Registry Offline" };
       return { ok: true, message: "Neural Link Active" };
     } catch {
       return { ok: false, message: "Link Severed" };
     }
+  },
+
+  updatePresence: async (userId: string, status: 'online' | 'offline') => {
+    if (!isValidUUID(userId)) return;
+    try {
+      await supabase.from('profiles').update({ 
+        status, 
+        last_seen: new Date().toISOString() 
+      }).eq('id', userId);
+    } catch (e) {}
   },
 
   upsertProfile: async (user: any) => {
@@ -42,10 +47,13 @@ export const cloudSync = {
         avatar: user.avatar,
         status: 'online',
         last_seen: new Date().toISOString()
-      }).select();
+      }, { onConflict: 'id' }).select();
+      
+      if (error) throw error;
       return data?.[0] || user;
     } catch (e) {
-      return user;
+      console.error("Critical: Profile Sync Failed", e);
+      throw e;
     }
   },
 
@@ -58,9 +66,21 @@ export const cloudSync = {
     }
   },
 
+  getAllProfiles: async (excludeId: string) => {
+    try {
+      const { data } = await supabase.from('profiles')
+        .select('*')
+        .neq('id', excludeId)
+        .limit(50);
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
   searchProfiles: async (query: string, phoneMatch: string) => {
     try {
-      const { data, error } = await supabase.from('profiles')
+      const { data } = await supabase.from('profiles')
         .select('*')
         .or(`name.ilike.%${query}%,phone.eq.${phoneMatch}`)
         .limit(10);
@@ -73,7 +93,7 @@ export const cloudSync = {
   findRegisteredUsers: async (phones: string[]) => {
     if (!phones.length) return [];
     try {
-      const { data, error } = await supabase.from('profiles').select('*').in('phone', phones);
+      const { data } = await supabase.from('profiles').select('*').in('phone', phones);
       return data || [];
     } catch {
       return [];
@@ -99,7 +119,7 @@ export const cloudSync = {
 
   fetchMessages: async (chatId: string) => {
     try {
-      const { data, error } = await supabase.from('messages')
+      const { data } = await supabase.from('messages')
         .select('*')
         .eq('chat_id', String(chatId))
         .order('timestamp', { ascending: true })
@@ -110,7 +130,6 @@ export const cloudSync = {
     }
   },
 
-  // FIX: Added subscribeToChat to handle room-specific message updates
   subscribeToChat: (chatId: string, userId: string, callback: (payload: any) => void) => {
     try {
       const channel = supabase.channel(`chat_room_${chatId}`)
@@ -131,10 +150,6 @@ export const cloudSync = {
     }
   },
 
-  /**
-   * Global listener for any message intended for this user.
-   * This is what makes it a "real app" - updates chats even when not looking at them.
-   */
   subscribeToGlobalMessages: (userId: string, callback: (payload: any) => void) => {
     if (!isValidUUID(userId)) return () => {};
     try {
@@ -168,8 +183,11 @@ export const cloudSync = {
 
   fetchStatuses: async () => {
     try {
-      const { data, error } = await supabase.from('statuses')
+      // Fetch statuses from the last 24 hours
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase.from('statuses')
         .select('*, profiles:user_id(name, avatar, phone)')
+        .gt('timestamp', yesterday)
         .order('timestamp', { ascending: false })
         .limit(50);
       return data || [];

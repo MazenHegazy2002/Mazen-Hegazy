@@ -6,17 +6,19 @@ import { validatePhone, formatPhoneDisplay } from '../services/validation';
 
 interface ContactListProps {
   users: User[];
+  currentUser: User;
   onStartChat: (user: User) => void;
   onAddContact: (user: User) => void;
 }
 
-const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddContact }) => {
+const ContactList: React.FC<ContactListProps> = ({ users, currentUser, onStartChat, onAddContact }) => {
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCheckingDb, setIsCheckingDb] = useState(false);
   const [registeredPhones, setRegisteredPhones] = useState<Set<string>>(new Set());
   const [globalResults, setGlobalResults] = useState<User[]>([]);
+  const [recommended, setRecommended] = useState<User[]>([]);
   
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
@@ -29,7 +31,18 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
     });
   };
 
-  // FRIEND DISCOVERY LOGIC (SYNC LOCAL LIST WITH GLOBAL STATUS)
+  // LOAD RECOMMENDED (REAL PUBLISHED APP FEEL)
+  useEffect(() => {
+    const loadRecs = async () => {
+      const all = await cloudSync.getAllProfiles(currentUser.id);
+      // Filter out those already in contacts
+      const filtered = all.filter(u => !users.some(c => c.id === u.id));
+      setRecommended(filtered);
+    };
+    loadRecs();
+  }, [currentUser.id, users]);
+
+  // FRIEND DISCOVERY
   useEffect(() => {
     const sync = async () => {
       if (users.length === 0) return;
@@ -38,15 +51,13 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
         const phones = users.map(u => u.phone);
         const onZylos = await DB.discoverContacts(phones);
         setRegisteredPhones(new Set(onZylos.map(u => u.phone)));
-      } catch (err) {
-        console.warn("Discovery failed, likely offline.");
-      }
+      } catch (err) {}
       setIsSyncing(false);
     };
     sync();
   }, [users]);
 
-  // GLOBAL REGISTRY SEARCH (LIVE SEARCH)
+  // GLOBAL REGISTRY SEARCH
   useEffect(() => {
     const searchGlobal = async () => {
       if (search.length < 3) {
@@ -57,10 +68,9 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
       try {
         const formatted = formatPhoneDisplay(search);
         const results = await cloudSync.searchProfiles(search, formatted);
-        const filtered = results.filter(r => !users.some(u => u.phone === r.phone));
+        const filtered = results.filter(r => r.id !== currentUser.id && !users.some(u => u.id === r.id));
         setGlobalResults(filtered);
       } catch (e) {
-        console.error("Global search error:", e);
       } finally {
         setIsSyncing(false);
       }
@@ -68,7 +78,7 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
 
     const timer = setTimeout(searchGlobal, 500);
     return () => clearTimeout(timer);
-  }, [search, users]);
+  }, [search, users, currentUser.id]);
 
   const localFiltered = useMemo(() => {
     const s = search.toLowerCase().trim();
@@ -82,19 +92,16 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
     const formattedPhone = formatPhoneDisplay(newPhone);
     
     if (!validatePhone(formattedPhone)) {
-      alert("Please enter a valid international phone number (e.g. +1 555 123 4567)");
+      alert("Invalid international format. (e.g. +1 555...)");
       return;
     }
 
     setIsCheckingDb(true);
     try {
-      // 1. Check if the user already exists in the global SQL DB
       const existingProfile = await cloudSync.getProfileByPhone(formattedPhone);
-      
       let finalUser: User;
       
       if (existingProfile) {
-        // 2. Found in Registry - Sync their real UUID and data
         finalUser = {
           id: existingProfile.id,
           name: existingProfile.name || newName,
@@ -103,7 +110,6 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
           status: 'online'
         };
       } else {
-        // 3. Not found - Create a local placeholder (using a valid UUID format)
         finalUser = {
           id: generateUUID(),
           name: newName || 'New Contact',
@@ -118,19 +124,9 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
       setNewName('');
       setNewPhone('');
       
-      if (existingProfile) {
-        onStartChat(finalUser);
-      }
+      if (existingProfile) onStartChat(finalUser);
     } catch (err) {
-      alert("Neural Registry is currently unreachable. Contact added locally.");
-      onAddContact({
-        id: generateUUID(),
-        name: newName,
-        phone: formattedPhone,
-        avatar: `https://picsum.photos/seed/${formattedPhone}/200`,
-        status: 'offline'
-      });
-      setShowAddModal(false);
+      alert("Neural Registry failed. Added locally.");
     } finally {
       setIsCheckingDb(false);
     }
@@ -138,147 +134,152 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
 
   return (
     <div className="w-full h-full flex flex-col bg-[#121418] relative">
-      <div className="p-4 space-y-4">
+      <div className="p-6 space-y-4">
         <div className="relative group">
           <input 
             type="text"
-            placeholder="Search by name or phone..."
+            placeholder="Search by name or signal..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-[#1c1f26] border border-white/5 rounded-xl py-3 pl-10 pr-10 text-sm focus:ring-2 focus:ring-blue-500/30 text-zinc-200 outline-none"
+            className="w-full bg-[#1c1f26] border border-white/5 rounded-2xl py-4 pl-12 pr-12 text-sm focus:ring-2 focus:ring-blue-500/20 text-zinc-200 outline-none transition-all"
           />
-          <svg className="w-4 h-4 absolute left-3.5 top-3.5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          <svg className="w-5 h-5 absolute left-4 top-4 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
           {isSyncing && (
-            <div className="absolute right-3 top-3.5">
+            <div className="absolute right-4 top-4">
               <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             </div>
           )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-2">
-        <div className="px-2 mb-4">
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-3 pb-8">
+        <div className="px-3 mb-6">
           <button
             onClick={() => setShowAddModal(true)}
-            className="w-full flex items-center p-3 rounded-2xl hover:bg-blue-600/10 text-blue-500 transition-all border border-dashed border-white/5"
+            className="w-full flex items-center p-4 rounded-3xl bg-blue-600/5 hover:bg-blue-600/10 text-blue-500 transition-all border border-dashed border-blue-500/20"
           >
-            <div className="w-11 h-11 rounded-2xl bg-blue-600/20 flex items-center justify-center">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+            <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-xl shadow-blue-900/20">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
             </div>
             <div className="ml-4 text-left">
-              <h4 className="font-bold text-sm">Add New Identity</h4>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Registry Entry</p>
+              <h4 className="font-bold text-sm tracking-tight">Manual Registry</h4>
+              <p className="text-[10px] text-zinc-600 uppercase font-black tracking-widest mt-0.5">Add Signal ID</p>
             </div>
           </button>
         </div>
 
-        {/* Local Contacts */}
+        {/* Local Registry */}
         {localFiltered.length > 0 && (
-          <div className="px-4 py-2 text-[10px] font-black text-zinc-700 uppercase tracking-widest flex justify-between items-center border-t border-white/5 mb-2 mt-2">
-            <span>My Registry</span>
+          <div className="px-4 py-3 text-[10px] font-black text-zinc-700 uppercase tracking-[0.4em] flex justify-between items-center mb-2">
+            <span>Secured Connections</span>
           </div>
         )}
 
         {localFiltered.map((user) => {
           const isOnZylos = registeredPhones.has(user.phone);
           return (
-            <div key={user.id} className="w-full flex items-center p-3 rounded-2xl mb-1 hover:bg-white/5 transition-all text-zinc-400 group relative">
+            <div key={user.id} className="w-full flex items-center p-4 rounded-[2rem] mb-1.5 hover:bg-white/5 transition-all text-zinc-400 group">
               <div className="relative flex-shrink-0">
-                <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-2xl object-cover shadow-lg" />
+                <img src={user.avatar} alt={user.name} className="w-14 h-14 rounded-[1.25rem] object-cover shadow-2xl border border-white/5" />
                 {isOnZylos && (
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-[#121418] rounded-full" />
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-[#121418] rounded-full" />
                 )}
               </div>
               <div className="ml-4 flex-1 text-left min-w-0">
                 <div className="flex items-center space-x-2">
-                  <h4 className="font-semibold text-zinc-200 truncate">{user.name}</h4>
+                  <h4 className="font-bold text-zinc-100 truncate">{user.name}</h4>
                   {isOnZylos && (
-                    <span className="bg-blue-600/10 text-blue-500 text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">On Zylos</span>
+                    <span className="bg-blue-600/10 text-blue-500 text-[8px] px-2 py-0.5 rounded font-black uppercase tracking-tighter border border-blue-500/20">Synced</span>
                   )}
                 </div>
-                <p className="text-[11px] text-zinc-500 truncate">{user.phone}</p>
+                <p className="text-xs text-zinc-500 truncate mt-0.5">{user.phone}</p>
               </div>
-              <button onClick={() => onStartChat(user)} className="p-2 bg-blue-600/10 text-blue-500 rounded-xl hover:bg-blue-600 hover:text-white transition-all">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+              <button onClick={() => onStartChat(user)} className="p-3 bg-blue-600/5 text-blue-500 rounded-2xl hover:bg-blue-600 hover:text-white transition-all shadow-lg active:scale-90">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
               </button>
             </div>
           );
         })}
 
-        {/* Global Registry Results */}
-        {globalResults.length > 0 && (
-          <div className="px-4 py-2 text-[10px] font-black text-blue-500/50 uppercase tracking-widest flex justify-between items-center border-t border-white/5 mb-2 mt-4">
-            <span>Global Registry (Not in Contacts)</span>
-          </div>
+        {/* Recommended Registry (The "Published App" magic) */}
+        {!search && recommended.length > 0 && (
+          <>
+            <div className="px-4 py-3 text-[10px] font-black text-blue-500/60 uppercase tracking-[0.4em] flex justify-between items-center mb-2 mt-4 border-t border-white/5 pt-6">
+              <span>Recommended Signals</span>
+            </div>
+            {recommended.map((user) => (
+              <div key={user.id} className="w-full flex items-center p-4 rounded-[2rem] mb-1.5 bg-blue-600/5 hover:bg-blue-600/10 transition-all group">
+                <div className="relative flex-shrink-0">
+                  <img src={user.avatar} alt={user.name} className="w-14 h-14 rounded-[1.25rem] object-cover shadow-2xl border border-white/10" />
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-500 border-2 border-[#121418] rounded-full" />
+                </div>
+                <div className="ml-4 flex-1 text-left min-w-0">
+                  <h4 className="font-bold text-zinc-100 truncate">{user.name}</h4>
+                  <p className="text-xs text-zinc-600 font-bold uppercase tracking-widest mt-0.5">Active Member</p>
+                </div>
+                <button onClick={() => { onAddContact(user); onStartChat(user); }} className="px-5 py-2.5 bg-blue-600 text-white text-[10px] font-black uppercase rounded-2xl shadow-xl active:scale-95 transition-all">
+                  Sync
+                </button>
+              </div>
+            ))}
+          </>
         )}
 
-        {globalResults.map((user) => (
-          <div key={user.id} className="w-full flex items-center p-3 rounded-2xl mb-1 bg-blue-600/5 hover:bg-blue-600/10 transition-all text-zinc-400 group relative">
-            <div className="relative flex-shrink-0">
-              <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-2xl object-cover shadow-lg" />
-              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-[#121418] rounded-full" />
-            </div>
-            <div className="ml-4 flex-1 text-left min-w-0">
-              <h4 className="font-semibold text-zinc-200 truncate">{user.name}</h4>
-              <p className="text-[11px] text-zinc-500 truncate">{user.phone}</p>
-            </div>
-            <button onClick={() => { onAddContact(user); onStartChat(user); }} className="p-2 bg-blue-600 text-white rounded-xl shadow-lg active:scale-95 transition-all">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-            </button>
-          </div>
-        ))}
-
         {search.length > 2 && localFiltered.length === 0 && globalResults.length === 0 && !isSyncing && (
-          <div className="p-8 text-center">
-            <p className="text-zinc-600 text-sm">No users found on Zylos matching "{search}"</p>
+          <div className="p-12 text-center">
+            <div className="w-16 h-16 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 text-zinc-700">
+               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            </div>
+            <p className="text-zinc-500 text-sm font-medium">Neural Signal Not Found</p>
+            <p className="text-zinc-700 text-[10px] uppercase font-black tracking-widest mt-2">Try full international number</p>
           </div>
         )}
       </div>
 
       {showAddModal && (
-        <div className="absolute inset-0 z-[110] bg-[#121418] p-6 animate-in slide-in-from-bottom duration-300">
-           <div className="flex items-center justify-between mb-8">
-              <h2 className="text-xl font-bold text-white">Manual Registry</h2>
-              <button onClick={() => setShowAddModal(false)} className="text-[10px] font-black uppercase text-zinc-500">Cancel</button>
+        <div className="absolute inset-0 z-[110] bg-[#121418] p-8 animate-in slide-in-from-bottom duration-500">
+           <div className="flex items-center justify-between mb-10">
+              <h2 className="text-2xl font-bold text-white tracking-tight">Manual Signal</h2>
+              <button onClick={() => setShowAddModal(false)} className="p-3 bg-white/5 rounded-2xl text-zinc-500 hover:text-white transition-all"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg></button>
            </div>
-           <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Display Name (Nickname)</label>
+           <form onSubmit={handleSubmit} className="space-y-8">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.4em] ml-2">Display Name</label>
                 <input 
                   type="text" 
                   value={newName} 
                   onChange={e => setNewName(e.target.value)}
-                  className="w-full bg-[#1c1f26] rounded-xl py-4 px-4 text-white focus:ring-2 focus:ring-blue-500/50 outline-none"
-                  placeholder="e.g. John Doe"
+                  className="w-full bg-[#1c1f26] rounded-2xl py-5 px-6 text-white border border-white/5 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                  placeholder="e.g. Satoshi"
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Phone Number (+...)</label>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.4em] ml-2">Phone Number</label>
                 <input 
                   type="tel" 
                   value={newPhone} 
-                  placeholder="+7 999 123 4567"
+                  placeholder="+44 7... or +1 ..."
                   onChange={e => setNewPhone(formatPhoneDisplay(e.target.value))}
-                  className="w-full bg-[#1c1f26] rounded-xl py-4 px-4 text-white focus:ring-2 focus:ring-blue-500/50 outline-none"
+                  className="w-full bg-[#1c1f26] rounded-2xl py-5 px-6 text-white border border-white/5 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
                   required
                 />
               </div>
               <button 
                 type="submit" 
                 disabled={isCheckingDb}
-                className={`w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/40 flex items-center justify-center space-x-2 active:scale-95 transition-all ${isCheckingDb ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`w-full bg-blue-600 text-white font-black py-5 rounded-[1.25rem] shadow-2xl shadow-blue-900/40 flex items-center justify-center space-x-3 active:scale-95 transition-all text-[11px] uppercase tracking-[0.3em] ${isCheckingDb ? 'opacity-50' : ''}`}
               >
                 {isCheckingDb ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Checking Registry...</span>
+                    <span>Intercepting signal...</span>
                   </>
                 ) : (
-                  <span>Add to Registry</span>
+                  <span>Register Connection</span>
                 )}
               </button>
-              <p className="text-[10px] text-zinc-600 text-center italic">Zylos will check if this number is already registered in our global secure database.</p>
+              <p className="text-[10px] text-zinc-600 text-center leading-relaxed font-bold uppercase tracking-widest opacity-60">Zylos will check the global neural registry to see if this identity already exists.</p>
            </form>
         </div>
       )}
