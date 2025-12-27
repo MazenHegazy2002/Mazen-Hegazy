@@ -84,13 +84,14 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         // Listen for signals
         const unsubscribe = signaling.subscribe(currentUser.id, async (type, data) => {
           if (!peerRef.current) return;
+          console.log('[CallOverlay] Signal received:', type);
 
           if (type === 'offer') {
             await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
             const answer = await peerRef.current.createAnswer();
             await peerRef.current.setLocalDescription(answer);
             signaling.sendSignal(recipient.id, 'answer', answer);
-            setCallState('connected'); // Simplified state transition
+            setCallState('connected');
           } else if (type === 'answer') {
             await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
             setCallState('connected');
@@ -104,6 +105,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
         // Initiator Logic
         if (!isIncoming) {
+          console.log('[CallOverlay] Initiating call to:', recipient.id);
           const offer = await peer.createOffer();
           await peer.setLocalDescription(offer);
           signaling.sendSignal(recipient.id, 'offer', offer);
@@ -112,7 +114,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         return () => {
           unsubscribe();
           stream.getTracks().forEach(t => t.stop());
-          peer.close();
+          if (peerRef.current) peerRef.current.close();
         };
 
       } catch (err) {
