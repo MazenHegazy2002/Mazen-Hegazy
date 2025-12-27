@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { Chat, Message, MessageType, MessageStatus, PrivacySettings, User, PlaybackState } from '../types';
@@ -22,7 +21,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const [translatingIds, setTranslatingIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
@@ -33,6 +31,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const chunksRef = useRef<Blob[]>([]);
   
   const recipient = chat.participants[0];
+  const currentAuthId = currentUser.authId || currentUser.id;
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -52,7 +51,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
     loadHistory();
 
-    const currentAuthId = currentUser.authId || currentUser.id;
     const unsubscribe = cloudSync.subscribeToChat(chat.id, currentAuthId, (payload) => {
       const newMessage: Message = {
         id: payload.id.toString(),
@@ -71,7 +69,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     });
 
     return () => { if (unsubscribe) unsubscribe(); };
-  }, [chat.id, currentUser.id, currentUser.authId]);
+  }, [chat.id, currentAuthId]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -110,7 +108,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const text = content || inputText;
     if (!text.trim() && type === MessageType.TEXT) return;
 
-    const currentAuthId = currentUser.authId || currentUser.id;
     const encryptedContent = type === MessageType.TEXT ? encrypt(text, chat.id) : text;
 
     const newMessage: Message = {
@@ -127,12 +124,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     setMessages(prev => [...prev, newMessage]);
     if (type === MessageType.TEXT) setInputText('');
 
-    await cloudSync.pushMessage(
-      chat.id, 
-      currentAuthId, 
-      { content: encryptedContent, type: type }, 
-      recipient.id
-    ); 
+    await cloudSync.pushMessage(chat.id, currentAuthId, { content: encryptedContent, type }, recipient.id); 
   };
 
   const handleSummarize = async () => {
@@ -145,17 +137,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const recentText = messages
         .filter(m => m.type === MessageType.TEXT)
         .slice(-20)
-        .map(m => `${m.senderId === (currentUser.authId || currentUser.id) ? 'Me' : recipient.name}: ${decrypt(m.content, chat.id)}`)
+        .map(m => `${m.senderId === currentAuthId ? 'Me' : recipient.name}: ${decrypt(m.content, chat.id)}`)
         .join('\n');
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Provide a bulleted summary of this chat conversation. Highlight key points or action items. Keep it short and neutral. \n\nConversation:\n${recentText}`,
+        contents: `Provide a bulleted summary of this conversation between two users on Zylos. Highlight key points. \n\nConversation:\n${recentText}`,
       });
-      setSummary(response.text || "Could not generate summary.");
+      setSummary(response.text || "Summary unavailable.");
     } catch (err) {
-      console.error("AI Error:", err);
-      setSummary("Neural link timed out. Try again later.");
+      setSummary("Neural link lag. Try again later.");
     } finally {
       setIsSummarizing(false);
     }
@@ -169,7 +160,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <img src={recipient.avatar} alt={recipient.name} className="w-10 h-10 rounded-2xl object-cover" />
           <div className="ml-3">
             <h3 className="text-sm font-bold text-white">{recipient.name}</h3>
-            <p className="text-[10px] text-blue-500 font-bold uppercase tracking-widest">Neural Link Active</p>
+            <p className="text-[10px] text-blue-500 font-black uppercase tracking-widest">Neural Encryption Active</p>
           </div>
         </div>
         <div className="flex items-center space-x-1">
@@ -186,11 +177,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
            <div className="flex justify-between items-center mb-3">
               <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest flex items-center">
                 <svg className="w-3 h-3 mr-1.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
-                AI Context Recap
+                AI Recap Engine
               </span>
               <button onClick={() => setSummary(null)} className="p-1 text-zinc-500 hover:text-white"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
            </div>
-           <div className="text-xs text-zinc-300 leading-relaxed max-h-40 overflow-y-auto custom-scrollbar whitespace-pre-wrap">{summary}</div>
+           <div className="text-xs text-zinc-300 leading-relaxed max-h-40 overflow-y-auto custom-scrollbar whitespace-pre-wrap font-medium">{summary}</div>
         </div>
       )}
 
@@ -198,11 +189,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         {loading && (
           <div className="flex flex-col items-center justify-center h-full opacity-40">
              <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
-             <p className="text-[10px] font-black uppercase tracking-[0.3em]">Deciphering History</p>
+             <p className="text-[10px] font-black uppercase tracking-[0.3em]">Syncing Neural History</p>
           </div>
         )}
         {messages.map((msg) => {
-          const currentAuthId = currentUser.authId || currentUser.id;
           const isMe = msg.senderId === currentAuthId;
           const isPlaying = playback.messageId === msg.id && playback.isPlaying;
           
@@ -228,7 +218,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                            <div key={i} className={`flex-1 rounded-full ${isPlaying ? 'bg-blue-300 animate-pulse' : 'bg-white/20'}`} style={{ height: `${20 + Math.random() * 80}%` }} />
                          ))}
                       </div>
-                      <span className="text-[8px] opacity-60 font-mono">{msg.duration || 0}s • Compressed Neural Audio</span>
+                      <span className="text-[8px] opacity-60 font-mono uppercase tracking-widest">{msg.duration || 0}s • Neural Audio</span>
                     </div>
                   </div>
                 )}
@@ -247,7 +237,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <button className="p-2.5 text-zinc-500 hover:text-blue-500 transition-colors"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
           <input 
             type="text" 
-            placeholder="Neural encrypted message..." 
+            placeholder="Neural encrypted..." 
             value={inputText}
             onChange={e => setInputText(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}

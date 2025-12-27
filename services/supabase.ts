@@ -1,46 +1,58 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Configuration
+// Connection Configuration
 const SUPABASE_URL = "https://rqvoqztaslbzhxlqgkvn.supabase.co"; 
 const SUPABASE_ANON_KEY = "sb_publishable_uFIV--uEdZ7XUkyLnHcl1w_ShTCnGt3";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
- * Validates if a string is a proper UUID. 
- * Supabase foreign keys strictly require UUIDs for user relations.
+ * Standard UUID validation for Supabase Identity integration.
  */
 const isValidUUID = (uuid: string) => {
   if (!uuid) return false;
-  // Standard UUID check
-  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  // If it's a temp ID or zeroes, we allow it for UI purposes but skip DB sync
-  if (uuid === '00000000-0000-0000-0000-000000000000') return false;
-  return typeof uuid === 'string' && regex.test(uuid);
+  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return regex.test(uuid);
+};
+
+/**
+ * Detects if an error is specifically because the table doesn't exist yet.
+ * Postgres Error 42P01 = undefined_table.
+ */
+const isSchemaMissing = (error: any) => {
+  if (!error) return false;
+  return (
+    error.code === '42P01' || 
+    error.message?.toLowerCase().includes('relation') || 
+    error.message?.toLowerCase().includes('does not exist')
+  );
 };
 
 export const cloudSync = {
+  /**
+   * Diagnostic check for the database.
+   */
   checkHealth: async () => {
     try {
       const { error } = await supabase.from('profiles').select('id').limit(1);
-      if (error && error.code !== 'PGRST116') throw error; 
-      return { ok: true, message: "Neural Link Healthy" };
-    } catch (err: any) {
-      console.error("[Zylos] Cloud Health Check Failed:", err);
-      return { ok: false, message: "Sync Pending" };
+      if (error) {
+        if (isSchemaMissing(error)) return { ok: false, message: "Database Setup Required" };
+        return { ok: false, message: "Sync Lagging" };
+      }
+      return { ok: true, message: "Neural Link Active" };
+    } catch {
+      return { ok: false, message: "Connection Offline" };
     }
   },
 
-  upsertProfile: async (user: any, authUserId?: string) => {
-    const targetId = authUserId || user.authId || user.id;
-    if (!isValidUUID(targetId)) {
-      console.warn('[Zylos] Profile sync skipped: Not a valid UUID.', targetId);
-      return null;
-    }
-
+  /**
+   * Gracefully syncs profile if table exists.
+   */
+  upsertProfile: async (user: any) => {
+    if (!isValidUUID(user.id)) return null;
     try {
       const { data, error } = await supabase.from('profiles').upsert({
-        id: targetId,
+        id: user.id,
         phone: user.phone,
         name: user.name,
         avatar: user.avatar,
@@ -48,27 +60,22 @@ export const cloudSync = {
         last_seen: new Date().toISOString()
       }).select();
       
-      if (error) {
-        console.error('[Zylos] Upsert Profile Error:', error.message);
-        throw error;
+      if (error && isSchemaMissing(error)) {
+        console.warn("[Zylos] Profiles table not found. Operating in local-only mode.");
+        return user; // Return local user to keep app moving
       }
-      return data?.[0];
-    } catch (err) {
-      console.error('[Zylos] Handshake Error:', err);
-      return null;
+      return data?.[0] || user;
+    } catch {
+      return user;
     }
   },
 
   getProfileByPhone: async (phone: string) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('phone', phone)
-        .maybeSingle(); 
-      if (error) return null;
+      const { data, error } = await supabase.from('profiles').select('*').eq('phone', phone).maybeSingle();
+      if (error && isSchemaMissing(error)) return null;
       return data;
-    } catch (e) {
+    } catch {
       return null;
     }
   },
@@ -76,72 +83,75 @@ export const cloudSync = {
   findRegisteredUsers: async (phones: string[]) => {
     if (!phones.length) return [];
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('phone', phones);
-      if (error) throw error;
+      const { data, error } = await supabase.from('profiles').select('*').in('phone', phones);
+      if (error && isSchemaMissing(error)) return [];
       return data || [];
-    } catch (err) {
-      console.error("[Zylos] Discovery Error:", err);
+    } catch {
       return [];
     }
   },
 
-  pushMessage: async (chatId: string, senderId: string, message: any, recipientId?: string) => {
+  /**
+   * Pushes message to global relay if table exists.
+   */
+  pushMessage: async (chatId: string, senderId: string, msg: any, recipientId?: string) => {
     if (!isValidUUID(senderId)) return;
     try {
       const payload: any = {
         chat_id: String(chatId), 
         sender_id: senderId, 
-        content: message.content,
-        type: message.type || 'TEXT',
+        content: msg.content,
+        type: msg.type || 'TEXT',
         timestamp: new Date().toISOString()
       };
-      if (recipientId && isValidUUID(recipientId)) {
-        payload.recipient_id = recipientId;
-      }
+      if (recipientId && isValidUUID(recipientId)) payload.recipient_id = recipientId;
+      
       const { error } = await supabase.from('messages').insert(payload);
-      if (error) throw error;
+      if (error && isSchemaMissing(error)) {
+        console.warn("[Zylos] Messages table missing. Message stored locally only.");
+      }
     } catch (err) {
-      console.error("[Zylos] Message Relay Error:", err);
+      console.error("[Zylos] Relay Lag:", err);
     }
   },
 
   fetchMessages: async (chatId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('messages')
+      const { data, error } = await supabase.from('messages')
         .select('*')
         .eq('chat_id', String(chatId))
         .order('timestamp', { ascending: true })
         .limit(100);
-      if (error) throw error;
+      
+      if (error && isSchemaMissing(error)) return [];
       return data || [];
-    } catch (err) {
+    } catch {
       return [];
     }
   },
 
   subscribeToChat: (chatId: string, userId: string, callback: (payload: any) => void) => {
-    const channel = supabase.channel(`chat_${chatId}`)
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'messages',
-        filter: `chat_id=eq.${chatId}`
-      }, (payload) => {
-        if (payload.new.sender_id !== userId) callback(payload.new);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    try {
+      const channel = supabase.channel(`chat_${chatId}`)
+        .on('postgres_changes', { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'messages', 
+          filter: `chat_id=eq.${chatId}` 
+        }, (payload) => {
+          if (payload.new.sender_id !== userId) callback(payload.new);
+        })
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR') console.warn("[Zylos] Realtime sync restricted (Setup missing).");
+        });
+      return () => { supabase.removeChannel(channel); };
+    } catch {
+      return () => {};
+    }
   },
 
   pushStatus: async (userId: string, status: { imageUrl: string; caption?: string }) => {
-    if (!isValidUUID(userId)) {
-      console.error("[Zylos] Status post blocked: User ID must be a UUID.");
-      return;
-    }
+    if (!isValidUUID(userId)) return;
     try {
       const { error } = await supabase.from('statuses').insert({
         user_id: userId,
@@ -149,35 +159,38 @@ export const cloudSync = {
         caption: status.caption,
         timestamp: new Date().toISOString()
       });
-      if (error) throw error;
+      if (error && isSchemaMissing(error)) console.warn("[Zylos] Statuses table missing.");
     } catch (err) {
-      console.error("[Zylos] Status Post Error:", err);
-      throw err;
+      console.error("[Zylos] Status Relay Lag:", err);
     }
   },
 
   fetchStatuses: async () => {
     try {
-      const { data, error } = await supabase
-        .from('statuses')
+      const { data, error } = await supabase.from('statuses')
         .select('*, profiles:user_id(name, avatar, phone)')
         .order('timestamp', { ascending: false })
-        .limit(30);
-      if (error) throw error;
+        .limit(50);
+      
+      if (error && isSchemaMissing(error)) return [];
       return data || [];
-    } catch (err) {
+    } catch {
       return [];
     }
   },
 
   subscribeToStatuses: (callback: (payload: any) => void) => {
-    const channel = supabase.channel('global_traffic')
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'statuses' 
-      }, (payload) => callback(payload.new))
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    try {
+      const channel = supabase.channel('global_broadcast')
+        .on('postgres_changes', { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'statuses' 
+        }, (payload) => callback(payload.new))
+        .subscribe();
+      return () => { supabase.removeChannel(channel); };
+    } catch {
+      return () => {};
+    }
   }
 };

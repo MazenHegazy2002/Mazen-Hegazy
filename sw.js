@@ -1,10 +1,11 @@
-
-const CACHE_NAME = 'zylos-v1.1';
+const CACHE_NAME = 'zylos-v1.2';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
+  './',
+  './index.html',
+  './manifest.json',
   'https://cdn.tailwindcss.com',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
+  'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap',
+  'https://www.transparenttextures.com/patterns/carbon-fibre.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -26,21 +27,25 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only cache GET requests
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        // Cache the new version
-        if (networkResponse.ok) {
+      if (cachedResponse) return cachedResponse;
+      
+      return fetch(event.request).then((networkResponse) => {
+        if (networkResponse.ok && event.request.url.startsWith('http')) {
           const cacheCopy = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cacheCopy));
         }
         return networkResponse;
-      }).catch(() => cachedResponse); // Fallback to cache if network fails
-
-      return cachedResponse || fetchPromise;
+      }).catch(() => {
+        // Return index.html for navigation requests (SPA support)
+        if (event.request.mode === 'navigate') {
+          return caches.match('./index.html');
+        }
+        return null;
+      });
     })
   );
 });

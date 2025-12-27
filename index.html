@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Zylos | Universal Neural Messenger</title>
+    <title>Zylos | Secure Neural Messenger</title>
     
     <!-- PWA & Mobile Optimization -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,6 +12,12 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#0b0d10">
     <meta name="format-detection" content="telephone=no">
+    
+    <!-- SEO & Social -->
+    <meta name="description" content="Secure, hybrid messaging with AI-powered voice calls and neural encryption.">
+    <meta property="og:title" content="Zylos Messenger">
+    <meta property="og:description" content="The next generation of hybrid secure messaging.">
+    <meta property="og:image" content="https://picsum.photos/seed/zylos/1200/630">
     
     <!-- Favicons -->
     <link rel="apple-touch-icon" href="https://picsum.photos/seed/zylos/192/192">
@@ -35,7 +41,6 @@
           padding-left: env(safe-area-inset-left);
           padding-right: env(safe-area-inset-right);
         }
-        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
         
         /* Custom Scrollbar */
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
@@ -53,19 +58,13 @@
           animation: statusProgress 5s linear forwards;
         }
 
-        .animate-shake {
-          animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        .animate-pulse-slow {
+          animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
-        @keyframes shake {
-          10%, 90% { transform: translate3d(-1px, 0, 0); }
-          20%, 80% { transform: translate3d(2px, 0, 0); }
-          30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
-          40%, 60% { transform: translate3d(4px, 0, 0); }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: .7; transform: scale(0.98); }
         }
-        
-        /* Smooth View Transitions */
-        .view-enter { opacity: 0; transform: translateY(10px); }
-        .view-enter-active { opacity: 1; transform: translateY(0); transition: all 0.3s ease-out; }
     </style>
 <script type="importmap">
 {
@@ -82,24 +81,12 @@
 <body class="bg-[#0b0d10] overflow-hidden">
     <div id="root"></div>
     <script>
-      // Enhanced Service Worker Registration
-      // Checks for local file system or origin mismatch which is common in development environments
-      if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+      if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          // Use relative path to ensure origin matching
-          const swUrl = new URL('./sw.js', window.location.href).href;
-          
-          navigator.serviceWorker.register(swUrl)
-            .then(reg => {
-              console.log('Zylos Neural SW Active:', reg.scope);
-            })
-            .catch(err => {
-              // Gracefully handle origin mismatch or environment restrictions
-              console.warn('Zylos Neural SW deferred. Environment may not support service workers or origin mismatch occurred.', err.message);
-            });
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('Zylos Neural SW Active'))
+            .catch(err => console.warn('SW deferred', err));
         });
-      } else {
-        console.log('Zylos Neural SW disabled (Local Environment)');
       }
     </script>
 </body>

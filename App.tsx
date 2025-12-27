@@ -8,6 +8,7 @@ import SettingsView from './components/SettingsView';
 import SignIn from './components/SignIn';
 import NotificationToast from './components/NotificationToast';
 import GlobalAudioPlayer from './components/GlobalAudioPlayer';
+import MobileAppGuide from './components/MobileAppGuide';
 import { Chat, User, AppView, Message, PlaybackState } from './types';
 import { MOCK_CHATS, MOCK_USERS } from './constants';
 import { DB } from './services/database';
@@ -24,19 +25,23 @@ const App: React.FC = () => {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<{ recipient: User; type: 'voice' | 'video' } | null>(null);
   const [showContacts, setShowContacts] = useState(false);
-
-  // Voice Playback State
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [playback, setPlayback] = useState<PlaybackState>({
-    messageId: null,
-    chatId: null,
-    senderName: null,
-    senderAvatar: null,
-    content: null,
-    isPlaying: false
+    messageId: null, chatId: null, senderName: null, senderAvatar: null, content: null, isPlaying: false
   });
 
   useEffect(() => {
     const boot = async () => {
+      // 1. Check for standalone mode (PWA)
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const hasSeenGuide = localStorage.getItem('zylos_guide_seen');
+
+      if (!isStandalone && isMobile && !hasSeenGuide) {
+        setShowInstallGuide(true);
+      }
+
+      // 2. Load Identity & Data
       const savedUser = await DB.getUser();
       if (savedUser) { 
         setCurrentUser(savedUser); 
@@ -45,7 +50,9 @@ const App: React.FC = () => {
       const savedChats = await DB.getChats();
       setChats(savedChats.length > 0 ? savedChats : MOCK_CHATS);
       setUsers(MOCK_USERS);
-      setIsBooting(false);
+
+      // 3. Complete Handshake
+      setTimeout(() => setIsBooting(false), 1500);
     };
     boot();
   }, []);
@@ -55,22 +62,34 @@ const App: React.FC = () => {
       setPlayback(prev => ({ ...prev, isPlaying: !prev.isPlaying }));
     } else {
       setPlayback({
-        messageId: message.id,
-        chatId: selectedChatId,
-        senderName,
-        senderAvatar,
-        content: message.content,
-        isPlaying: true
+        messageId: message.id, chatId: selectedChatId, senderName, senderAvatar, content: message.content, isPlaying: true
       });
     }
   };
 
+  const closeGuide = () => {
+    localStorage.setItem('zylos_guide_seen', 'true');
+    setShowInstallGuide(false);
+  };
+
   if (isBooting) return (
-    <div className="fixed inset-0 bg-[#0b0d10] flex flex-col items-center justify-center">
-      <div className="w-16 h-16 bg-blue-600 rounded-[1.5rem] animate-pulse shadow-2xl shadow-blue-500/20" />
-      <p className="mt-8 text-[10px] font-black uppercase text-zinc-600 tracking-[0.5em] animate-pulse">Syncing Neural Link</p>
+    <div className="fixed inset-0 bg-[#0b0d10] flex flex-col items-center justify-center z-[5000]">
+      <div className="relative">
+        <div className="w-20 h-20 bg-blue-600 rounded-[2rem] animate-pulse-slow shadow-[0_0_50px_rgba(37,99,235,0.4)] flex items-center justify-center">
+          <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A10.003 10.003 0 0012 3v1m0 16v1m0-1a10.003 10.003 0 01-9.253-6.429l-.054-.09M12 11h.01" />
+          </svg>
+        </div>
+        <div className="absolute -inset-4 border border-blue-500/20 rounded-[2.5rem] animate-ping opacity-20" />
+      </div>
+      <div className="mt-12 flex flex-col items-center space-y-2">
+        <p className="text-[10px] font-black uppercase text-white tracking-[0.6em] ml-2">Zylos Neural Link</p>
+        <p className="text-[8px] font-bold uppercase text-zinc-700 tracking-[0.2em]">Synchronizing Identity...</p>
+      </div>
     </div>
   );
+
+  if (showInstallGuide) return <MobileAppGuide onContinue={closeGuide} />;
 
   if (!isLoggedIn) return <SignIn onSignIn={async (p) => {
     const u = { ...p, authId: p.id, status: 'online' as const };
@@ -85,10 +104,8 @@ const App: React.FC = () => {
     <div className="flex h-[100dvh] w-screen bg-[#0b0d10] text-zinc-200 overflow-hidden font-['Inter'] safe-area-inset">
       <NotificationToast />
       
-      {/* Sidebar - Entirely hidden on mobile when a chat is active */}
-      <div className={`flex flex-col border-r border-white/5 h-full w-full md:w-[380px] lg:w-[420px] shrink-0 transition-all duration-300 ${selectedChatId ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex flex-col border-r border-white/5 h-full w-full md:w-[380px] lg:w-[420px] shrink-0 transition-all ${selectedChatId ? 'hidden md:flex' : 'flex'}`}>
         <StatusSection users={users} currentUser={currentUser} />
-        
         <div className="flex-1 overflow-hidden">
           {currentView === 'chats' && (
             <ChatList 
@@ -108,73 +125,56 @@ const App: React.FC = () => {
           )}
         </div>
 
-        {/* Unified Navigation Bar */}
-        <div className="h-20 bg-[#121418] border-t border-white/5 flex items-center justify-around shrink-0 pb-safe px-4">
-          <button onClick={() => { setCurrentView('chats'); setSelectedChatId(null); }} className={`flex flex-col items-center gap-1 transition-colors ${currentView === 'chats' ? 'text-blue-500' : 'text-zinc-600'}`}>
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-            <span className="text-[10px] font-black uppercase tracking-widest">Chats</span>
+        <div className="h-20 bg-[#121418] border-t border-white/5 flex items-center justify-around shrink-0 pb-safe">
+          <button onClick={() => { setCurrentView('chats'); setSelectedChatId(null); }} className={`flex flex-col items-center gap-1 group transition-all ${currentView === 'chats' ? 'text-blue-500' : 'text-zinc-600 hover:text-zinc-400'}`}>
+            <svg className={`w-6 h-6 transition-transform ${currentView === 'chats' ? 'scale-110' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+            <span className="text-[9px] font-black uppercase tracking-widest">Chats</span>
           </button>
-          <button onClick={() => { setCurrentView('settings'); setSelectedChatId(null); }} className={`flex flex-col items-center gap-1 transition-colors ${currentView === 'settings' ? 'text-blue-500' : 'text-zinc-600'}`}>
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /></svg>
-            <span className="text-[10px] font-black uppercase tracking-widest">Settings</span>
+          <button onClick={() => { setCurrentView('settings'); setSelectedChatId(null); }} className={`flex flex-col items-center gap-1 group transition-all ${currentView === 'settings' ? 'text-blue-500' : 'text-zinc-600 hover:text-zinc-400'}`}>
+            <svg className={`w-6 h-6 transition-transform ${currentView === 'settings' ? 'scale-110' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /></svg>
+            <span className="text-[9px] font-black uppercase tracking-widest">Settings</span>
           </button>
         </div>
       </div>
 
-      {/* Main Content Area - Full screen on mobile when chat is selected */}
-      <div className={`flex-1 h-full flex flex-col relative transition-transform duration-300 ${selectedChatId ? 'translate-x-0' : 'translate-x-0 md:translate-x-0'} ${selectedChatId ? 'flex' : 'hidden md:flex'}`}>
+      <div className={`flex-1 h-full flex flex-col relative ${selectedChatId ? 'flex' : 'hidden md:flex'}`}>
         {selectedChat ? (
           <ChatWindow 
-            chat={selectedChat} 
-            onBack={() => setSelectedChatId(null)}
+            chat={selectedChat} onBack={() => setSelectedChatId(null)}
             onCall={(t) => setActiveCall({ recipient: selectedChat.participants[0], type: t })}
-            currentUser={currentUser}
-            privacySettings={{} as any}
-            onPlayVoice={handlePlayVoice}
-            playback={playback}
+            currentUser={currentUser} privacySettings={{} as any} onPlayVoice={handlePlayVoice} playback={playback}
           />
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-[#0b0d10] relative overflow-hidden">
-             <div className="absolute inset-0 pointer-events-none opacity-20">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle,rgba(59,130,246,0.1)_0%,transparent_70%)]" />
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-[#0b0d10] relative">
+             <div className="absolute inset-0 opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] pointer-events-none" />
+             <div className="w-20 h-20 bg-zinc-800/20 rounded-3xl mb-8 flex items-center justify-center border border-white/5 animate-in zoom-in duration-500">
+                <svg className="w-8 h-8 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
              </div>
-             <div className="w-24 h-24 bg-zinc-800/20 rounded-[2rem] mb-8 flex items-center justify-center border border-white/5 relative z-10 shadow-inner">
-                <svg className="w-10 h-10 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-             </div>
-             <h2 className="text-xl font-bold text-white relative z-10">Select a Secure Frequency</h2>
-             <p className="text-zinc-500 text-sm mt-3 max-w-xs relative z-10 leading-relaxed">Neural conversations are synced across all your devices and end-to-end encrypted.</p>
+             <h2 className="text-lg font-bold text-white animate-in fade-in slide-in-from-bottom-2 duration-700">Select a Frequency</h2>
+             <p className="text-zinc-600 text-xs mt-2 max-w-xs animate-in fade-in slide-in-from-bottom-3 duration-1000">Zylos hybrid messenger combines the speed of light with deep neural encryption.</p>
           </div>
         )}
       </div>
 
-      {/* Voice Player Overlay */}
-      <GlobalAudioPlayer 
-        playback={playback} 
-        onToggle={() => setPlayback(prev => ({ ...prev, isPlaying: !prev.isPlaying }))}
-        onClose={() => setPlayback({ messageId: null, chatId: null, senderName: null, senderAvatar: null, content: null, isPlaying: false })}
-      />
+      <GlobalAudioPlayer playback={playback} onToggle={() => setPlayback(prev => ({ ...prev, isPlaying: !prev.isPlaying }))} onClose={() => setPlayback({ messageId: null, chatId: null, senderName: null, senderAvatar: null, content: null, isPlaying: false })} />
 
       {showContacts && (
-        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-2xl flex items-center justify-center p-4">
-           <div className="w-full max-w-md h-[85vh] bg-[#121418] rounded-[3rem] border border-white/10 overflow-hidden flex flex-col shadow-2xl">
-              <div className="p-7 border-b border-white/5 flex justify-between items-center bg-black/20">
-                <h2 className="text-xl font-bold text-white">Neural Registry</h2>
-                <button onClick={() => setShowContacts(false)} className="p-2.5 bg-white/5 rounded-2xl text-zinc-400 hover:text-white transition-colors">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-2xl flex items-center justify-center p-4 animate-in fade-in duration-300">
+           <div className="w-full max-w-md h-[80vh] bg-[#121418] rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-500">
+              <div className="p-6 border-b border-white/5 flex justify-between items-center">
+                <h2 className="text-lg font-bold text-white">Neural Registry</h2>
+                <button onClick={() => setShowContacts(false)} className="p-2 text-zinc-500 hover:text-white transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
               </div>
-              <div className="flex-1 overflow-hidden">
-                <ContactList users={users} onStartChat={(u) => { 
-                  const existing = chats.find(c => c.participants[0].id === u.id);
-                  if (existing) setSelectedChatId(existing.id);
-                  else {
-                    const newChat: Chat = { id: `c-${Date.now()}`, participants: [u], unreadCount: 0 };
-                    setChats([newChat, ...chats]); 
-                    setSelectedChatId(newChat.id);
-                  }
-                  setShowContacts(false);
-                }} onAddContact={() => {}} />
-              </div>
+              <ContactList users={users} onStartChat={(u) => { 
+                const existing = chats.find(c => c.participants[0].id === u.id);
+                if (existing) setSelectedChatId(existing.id);
+                else {
+                  const newChat: Chat = { id: `c-${Date.now()}`, participants: [u], unreadCount: 0 };
+                  setChats([newChat, ...chats]); 
+                  setSelectedChatId(newChat.id);
+                }
+                setShowContacts(false);
+              }} onAddContact={() => {}} />
            </div>
         </div>
       )}
