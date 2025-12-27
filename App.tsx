@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ChatList from './components/ChatList';
 import ChatWindow from './components/ChatWindow';
 import StatusSection from './components/StatusSection';
@@ -8,11 +8,15 @@ import ContactList from './components/ContactList';
 import SettingsView from './components/SettingsView';
 import CallLogView from './components/CallLogView';
 import SecureFolderView from './components/SecureFolderView';
+import GlobalAudioPlayer from './components/GlobalAudioPlayer';
 import SignIn from './components/SignIn';
-import { Chat, User, MessageType, AppView, CallLog, PrivacySettings } from './types';
+import NotificationToast from './components/NotificationToast';
+import { Chat, User, MessageType, AppView, CallLog, PrivacySettings, PlaybackState, Message } from './types';
 import { MOCK_CHATS, MOCK_USERS } from './constants';
 import { DB } from './services/database';
-import { isCloudConfigured } from './services/supabase';
+import { supabase, cloudSync } from './services/supabase';
+import { NotificationService } from './services/notificationService';
+import { decrypt } from './services/encryptionService';
 
 const App: React.FC = () => {
   const [isBooting, setIsBooting] = useState(true);
@@ -20,10 +24,10 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>('chats');
   const [users, setUsers] = useState<User[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [cloudConnected, setCloudConnected] = useState(false);
+  const [queryStatus, setQueryStatus] = useState<{ id: string; label: string }[]>([]);
   
-  const [currentUser, setCurrentUser] = useState<User>({
+  const [currentUser, setCurrentUser] = useState<User & { authId?: string }>({
     id: 'me',
     name: '',
     phone: '',
@@ -31,8 +35,16 @@ const App: React.FC = () => {
     status: 'online'
   });
 
-  const [securePasscode, setSecurePasscode] = useState<string | null>(null);
+  const [playback, setPlayback] = useState<PlaybackState>({
+    messageId: null,
+    chatId: null,
+    senderName: null,
+    senderAvatar: null,
+    content: null,
+    isPlaying: false
+  });
 
+  const [securePasscode, setSecurePasscode] = useState<string | null>(null);
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>({
     lastSeen: 'Everyone',
     profilePhoto: 'Everyone',
@@ -53,48 +65,94 @@ const App: React.FC = () => {
   useEffect(() => {
     const bootApp = async () => {
       try {
+        NotificationService.requestPermission();
+        const session = await cloudSync.getSession();
         const savedUser = await DB.getUser();
-        const savedChats = await DB.getChats();
-        const savedContacts = await DB.getContacts();
-
-        if (savedUser) {
-          setCurrentUser(savedUser);
+        
+        if (session?.user && savedUser) {
+          setCurrentUser({ ...savedUser, authId: session.user.id });
           setIsLoggedIn(true);
         }
+
+        const savedChats = await DB.getChats();
+        const savedContacts = await DB.getContacts();
 
         setChats(savedChats.length > 0 ? savedChats : MOCK_CHATS);
         setUsers(savedContacts.length > 0 ? savedContacts : MOCK_USERS);
         
-        // Determine Cloud Connectivity
-        setCloudConnected(isCloudConfigured());
-
-        await new Promise(r => setTimeout(r, 800));
+        const health = await cloudSync.checkHealth();
+        setCloudConnected(health.ok);
         setIsBooting(false);
       } catch (err) {
-        console.error("BOOT FAILURE:", err);
         setIsBooting(false);
       }
     };
     bootApp();
   }, []);
 
-  // Debounced Cloud Synchronization
   useEffect(() => {
-    if (isLoggedIn && !isBooting) {
-      const sync = async () => {
-        setIsSyncing(true);
-        await DB.saveUser(currentUser);
-        await DB.saveChats(chats);
-        await DB.saveContacts(users);
-        setTimeout(() => setIsSyncing(false), 800);
-      };
-      const timer = setTimeout(sync, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [currentUser, chats, users, isLoggedIn, isBooting]);
+    const currentAuthId = String(currentUser.authId || currentUser.id);
+    if (!isLoggedIn || !currentAuthId || currentAuthId === 'me') return;
 
-  const handleStartChat = (user: User) => {
-    const existingChat = chats.find(c => !c.isGroup && c.participants.some(p => p.id === user.id));
+    const channel = supabase.channel('global-traffic')
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'messages' 
+      }, (payload) => {
+        setQueryStatus(prev => [{ id: Math.random().toString(), label: 'Syncing Incoming Message' }, ...prev].slice(0, 3));
+        
+        if (String(payload.new.sender_id) !== currentAuthId) {
+          const sender = users.find(u => String(u.id) === String(payload.new.sender_id)) || { name: 'Stranger', avatar: '' };
+          
+          let content = "New message";
+          if (payload.new.type === MessageType.TEXT) {
+            content = decrypt(payload.new.content, payload.new.chat_id);
+          }
+
+          NotificationService.send(sender.name, content, sender.avatar);
+
+          setChats(prev => prev.map(c => {
+            if (c.id === payload.new.chat_id) {
+              return {
+                ...c,
+                unreadCount: c.id === selectedChatId ? 0 : c.unreadCount + 1,
+                lastMessage: {
+                  id: payload.new.id.toString(),
+                  senderId: payload.new.sender_id,
+                  content: payload.new.content,
+                  type: payload.new.type as MessageType,
+                  timestamp: new Date(payload.new.timestamp)
+                }
+              };
+            }
+            return c;
+          }));
+        }
+        setTimeout(() => setQueryStatus(prev => prev.slice(0, -1)), 3000);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [isLoggedIn, users, selectedChatId, currentUser.authId, currentUser.id]);
+
+  const handlePlayVoice = (msg: Message, senderName: string, senderAvatar: string) => {
+    if (playback.messageId === msg.id) {
+      setPlayback(prev => ({ ...prev, isPlaying: !prev.isPlaying }));
+    } else {
+      setPlayback({
+        messageId: msg.id,
+        chatId: selectedChatId,
+        senderName,
+        senderAvatar,
+        content: msg.content,
+        isPlaying: true
+      });
+    }
+  };
+
+  const handleStartChat = useCallback((user: User) => {
+    const existingChat = chats.find(c => !c.isGroup && c.participants.some(p => String(p.id) === String(user.id)));
     if (existingChat) {
       setSelectedChatId(existingChat.id);
     } else {
@@ -102,21 +160,16 @@ const App: React.FC = () => {
         id: `c-${Date.now()}`,
         participants: [user],
         unreadCount: 0,
-        folder: 'Personal',
-        lastMessage: {
-          id: `m-${Date.now()}`,
-          senderId: user.id,
-          content: 'End-to-end encrypted channel opened.',
-          type: MessageType.TEXT,
-          timestamp: new Date()
-        }
+        isGroup: false,
+        isArchived: false,
+        isMuted: false
       };
-      setChats([newChat, ...chats]);
+      setChats(prev => [newChat, ...prev]);
       setSelectedChatId(newChat.id);
     }
     setShowContacts(false);
     setCurrentView('chats');
-  };
+  }, [chats]);
 
   if (isBooting) {
     return (
@@ -126,19 +179,20 @@ const App: React.FC = () => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
         </div>
-        <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.5em] animate-pulse">Initializing Data Layers</p>
+        <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.5em] animate-pulse">Neural Handshake</p>
       </div>
     );
   }
 
   if (!isLoggedIn) {
     return <SignIn onSignIn={async (profile) => {
-      const newUser: User = {
-        id: `u-${Date.now()}`,
+      const newUser = {
+        id: profile.id,
+        authId: profile.id,
         name: profile.name,
         phone: profile.phone,
         avatar: profile.avatar,
-        status: 'online'
+        status: 'online' as const
       };
       setCurrentUser(newUser);
       setIsLoggedIn(true);
@@ -150,21 +204,25 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen bg-[#0b0d10] overflow-hidden safe-area-inset font-['Inter'] text-zinc-200">
-      {/* Real-time Online Sync Badge */}
-      <div className={`fixed top-4 right-4 z-[100] bg-zinc-900/90 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-full flex items-center space-x-3 transition-all duration-500 ${isSyncing ? 'translate-y-0 opacity-100' : '-translate-y-12 opacity-0'}`}>
-        <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping" />
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">Cloud Sync Active</span>
-      </div>
-
+      <NotificationToast />
+      <GlobalAudioPlayer 
+        playback={playback} 
+        onToggle={() => setPlayback(p => ({ ...p, isPlaying: !p.isPlaying }))} 
+        onClose={() => setPlayback({ ...playback, content: null, isPlaying: false, messageId: null })}
+      />
+      
       <div className="flex flex-1 overflow-hidden relative">
         <div className={`flex flex-col border-r border-white/5 h-full relative w-full md:w-[380px] transition-transform duration-300 ${selectedChatId ? '-translate-x-full md:translate-x-0 hidden md:flex' : 'translate-x-0'}`}>
-           <StatusSection users={users} />
+           <StatusSection users={users} currentUser={currentUser} />
            
            <div className="flex-1 overflow-hidden relative">
             {currentView === 'chats' && (
               <ChatList 
                 chats={chats} 
-                onSelectChat={(chat) => setSelectedChatId(chat.id)} 
+                onSelectChat={(chat) => {
+                  setSelectedChatId(chat.id);
+                  setChats(prev => prev.map(c => c.id === chat.id ? {...c, unreadCount: 0} : c));
+                }} 
                 onAddChat={() => setShowContacts(true)} 
                 selectedChatId={selectedChatId || undefined} 
                 onMuteChat={(id) => setChats(prev => prev.map(c => c.id === id ? {...c, isMuted: !c.isMuted} : c))}
@@ -183,6 +241,17 @@ const App: React.FC = () => {
               />
             )}
            </div>
+
+           {queryStatus.length > 0 && (
+             <div className="absolute top-24 right-4 z-[450] flex flex-col space-y-2">
+               {queryStatus.map(q => (
+                 <div key={q.id} className="bg-blue-600/20 backdrop-blur-xl border border-blue-500/20 px-3 py-1.5 rounded-full flex items-center space-x-2 animate-in slide-in-from-right duration-300">
+                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping" />
+                    <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">{q.label}</span>
+                 </div>
+               ))}
+             </div>
+           )}
 
            <div className="h-20 bg-[#121418] border-t border-white/5 px-4 flex items-center justify-around z-50 pb-safe">
              {[
@@ -212,24 +281,21 @@ const App: React.FC = () => {
               onCall={(type) => setActiveCall({ recipient: selectedChat.participants[0], type })}
               onBack={() => setSelectedChatId(null)}
               privacySettings={privacySettings}
+              currentUser={currentUser}
+              onPlayVoice={handlePlayVoice}
+              playback={playback}
             />
           ) : (
-            <div className="flex-1 h-full flex flex-col items-center justify-center p-8 text-center bg-[#0d0f12] bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+            <div className="flex-1 h-full flex flex-col items-center justify-center p-8 text-center bg-[#0d0f12]">
               <div className="w-20 h-20 bg-zinc-800/20 backdrop-blur rounded-[2rem] flex items-center justify-center mb-8 border border-white/5 shadow-2xl">
                 <svg className="w-10 h-10 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-bold text-white mb-3">Your Secure Portal</h2>
+              <h2 className="text-2xl font-bold text-white mb-3">Zylos</h2>
               <p className="text-zinc-500 max-w-sm text-sm leading-relaxed">
-                Connect your Zylos account to the online cloud for cross-device message persistence and instant global delivery.
+                Experience global messaging with AI-powered features. Your sessions are encrypted and synced to the Zylos Cloud.
               </p>
-              {!cloudConnected && (
-                <div className="mt-8 p-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl flex items-center space-x-3 max-w-xs animate-pulse">
-                  <svg className="w-5 h-5 text-orange-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-                  <p className="text-[10px] text-orange-500 font-black uppercase text-left leading-tight">Syncing to Local-Only Engine. Configure Cloud Keys for Global Sync.</p>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -241,7 +307,6 @@ const App: React.FC = () => {
               <div className="p-6 border-b border-white/5 flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-bold text-white">Contacts</h2>
-                  <p className="text-[10px] text-blue-500 font-black uppercase tracking-widest mt-1">Discovering on Cloud</p>
                 </div>
                 <button onClick={() => setShowContacts(false)} className="p-3 bg-white/5 rounded-2xl text-zinc-400 hover:text-white transition-all">
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>

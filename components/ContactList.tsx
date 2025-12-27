@@ -19,12 +19,18 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
 
+  // FRIEND DISCOVERY LOGIC: Check who is on Zylos
   useEffect(() => {
     const sync = async () => {
+      if (users.length === 0) return;
       setIsSyncing(true);
-      const phones = users.map(u => u.phone);
-      const onZylos = await DB.discoverContacts(phones);
-      setRegisteredPhones(new Set(onZylos.map(u => u.phone)));
+      try {
+        const phones = users.map(u => u.phone);
+        const onZylos = await DB.discoverContacts(phones);
+        setRegisteredPhones(new Set(onZylos.map(u => u.phone)));
+      } catch (err) {
+        console.warn("Discovery failed, likely offline.");
+      }
       setIsSyncing(false);
     };
     sync();
@@ -35,6 +41,7 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
     return users.filter(u => 
       u.name.toLowerCase().includes(s) || u.phone.includes(s)
     ).sort((a, b) => {
+      // Prioritize users already on Zylos
       const aOn = registeredPhones.has(a.phone) ? 0 : 1;
       const bOn = registeredPhones.has(b.phone) ? 0 : 1;
       return aOn - bOn || a.name.localeCompare(b.name);
@@ -93,13 +100,13 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
             </div>
             <div className="ml-4 text-left">
               <h4 className="font-bold text-sm">New Contact</h4>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Add to Address Book</p>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Registry Lookup</p>
             </div>
           </button>
         </div>
 
-        <div className="px-4 py-2 text-[10px] font-bold text-zinc-600 uppercase tracking-widest flex justify-between items-center border-t border-white/5 mb-1">
-          <span>Contacts on Zylos</span>
+        <div className="px-4 py-2 text-[10px] font-black text-zinc-700 uppercase tracking-widest flex justify-between items-center border-t border-white/5 mb-2 mt-2">
+          <span>Global Registry</span>
         </div>
 
         {filteredContacts.map((user) => {
@@ -107,8 +114,8 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
           return (
             <div key={user.id} className="w-full flex items-center p-3 rounded-2xl mb-1 hover:bg-white/5 transition-all text-zinc-400 group relative">
               <div className="relative flex-shrink-0">
-                <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-2xl object-cover shadow-md" />
-                {isOnZylos && user.status === 'online' && (
+                <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-2xl object-cover shadow-lg" />
+                {isOnZylos && (
                   <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-[#121418] rounded-full" />
                 )}
               </div>
@@ -161,7 +168,7 @@ const ContactList: React.FC<ContactListProps> = ({ users, onStartChat, onAddCont
                   required
                 />
               </div>
-              <button type="submit" className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/40">Check Registry</button>
+              <button type="submit" className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/40">Verify on Zylos</button>
            </form>
         </div>
       )}

@@ -49,8 +49,8 @@ export const DB = {
   },
 
   sendMessage: async (chatId: string, message: Message): Promise<void> => {
-    // This is the core "Online" step: Pushing the message to the central DB
-    await cloudSync.pushMessage(chatId, message);
+    // Fix: Pass message.senderId as the senderPhone argument
+    await cloudSync.pushMessage(chatId, message.senderId, message);
   },
 
   saveContacts: async (users: User[]): Promise<void> => {

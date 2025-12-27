@@ -129,10 +129,10 @@ export const COUNTRIES: Country[] = [
 ];
 
 export const MOCK_USERS: User[] = [
-  { id: '1', name: 'Alex Volkov', phone: '+7 900 123 4567', avatar: 'https://picsum.photos/seed/alex/200', status: 'online' },
-  { id: '2', name: 'Maria Ivanova', phone: '+7 900 765 4321', avatar: 'https://picsum.photos/seed/maria/200', status: 'last seen recently' },
-  { id: '3', name: 'Elena Petrova', phone: '+7 911 555 0101', avatar: 'https://picsum.photos/seed/elena/200', status: 'online' },
-  { id: '4', name: 'Dmitry Sokolov', phone: '+7 905 888 2211', avatar: 'https://picsum.photos/seed/dmitry/200', status: 'offline' },
+  { id: '11111111-1111-4111-a111-111111111111', name: 'Alex Volkov', phone: '+7 900 123 4567', avatar: 'https://picsum.photos/seed/alex/200', status: 'online' },
+  { id: '22222222-2222-4222-a222-222222222222', name: 'Maria Ivanova', phone: '+7 900 765 4321', avatar: 'https://picsum.photos/seed/maria/200', status: 'last seen recently' },
+  { id: '33333333-3333-4333-a333-333333333333', name: 'Elena Petrova', phone: '+7 911 555 0101', avatar: 'https://picsum.photos/seed/elena/200', status: 'online' },
+  { id: '44444444-4444-4444-a444-444444444444', name: 'Dmitry Sokolov', phone: '+7 905 888 2211', avatar: 'https://picsum.photos/seed/dmitry/200', status: 'offline' },
 ];
 
 export const MOCK_CHATS: Chat[] = [
@@ -142,7 +142,7 @@ export const MOCK_CHATS: Chat[] = [
     unreadCount: 2,
     lastMessage: {
       id: 'm1',
-      senderId: '1',
+      senderId: MOCK_USERS[0].id,
       content: 'Can you check the latest report?',
       type: MessageType.TEXT,
       timestamp: new Date()
@@ -154,7 +154,7 @@ export const MOCK_CHATS: Chat[] = [
     unreadCount: 0,
     lastMessage: {
       id: 'm2',
-      senderId: '2',
+      senderId: MOCK_USERS[1].id,
       content: 'voice_note_placeholder',
       type: MessageType.VOICE,
       timestamp: new Date(Date.now() - 3600000),

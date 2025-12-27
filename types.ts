@@ -45,11 +45,20 @@ export interface Message {
   content: string;
   type: MessageType;
   timestamp: Date;
-  duration?: number; // for voice notes
+  duration?: number;
   reactions?: Reaction[];
-  status?: MessageStatus; // for read receipts
-  translation?: string; // Translated content
+  status?: MessageStatus;
+  translation?: string;
   isEncrypted?: boolean;
+}
+
+export interface PlaybackState {
+  messageId: string | null;
+  chatId: string | null;
+  senderName: string | null;
+  senderAvatar: string | null;
+  content: string | null;
+  isPlaying: boolean;
 }
 
 export interface CallLog {
@@ -58,14 +67,14 @@ export interface CallLog {
   type: 'voice' | 'video';
   direction: 'incoming' | 'outgoing' | 'missed';
   timestamp: Date;
-  duration?: number; // in seconds
+  duration?: number;
 }
 
 export interface Chat {
   id: string;
   participants: User[];
-  name?: string; // For groups
-  avatar?: string; // For groups
+  name?: string;
+  avatar?: string;
   lastMessage?: Message;
   unreadCount: number;
   isGroup?: boolean;
