@@ -13,6 +13,7 @@ import { Chat, User, AppView, Message, PlaybackState, MessageType } from './type
 import { DB } from './services/database';
 import { cloudSync, getChatRoomId } from './services/supabase';
 import { NotificationService } from './services/notificationService';
+import { signaling } from './services/signaling';
 
 const App: React.FC = () => {
   const [isBooting, setIsBooting] = useState(true);
@@ -97,32 +98,30 @@ const App: React.FC = () => {
     if (isLoggedIn) DB.saveChats(chats);
   }, [chats, isLoggedIn]);
 
+  // INCOMING CALL LISTENER
+  useEffect(() => {
+    if (!isLoggedIn || currentUser.id === '00000000-0000-0000-0000-000000000000') return;
+
+    const unsubscribe = signaling.subscribe(currentUser.id, (type, data) => {
+      if (type === 'offer') {
+        // Create a placeholder caller needed for the UI
+        const unknownUser: User = {
+          id: 'unknown-caller',
+          name: 'Incoming Call',
+          phone: '',
+          avatar: 'https://ui-avatars.com/api/?name=Incoming&background=random',
+          status: 'online'
+        };
+        setActiveCall({ recipient: unknownUser, type: 'voice', isIncoming: true });
+      }
+    });
+    return () => unsubscribe();
+  }, [isLoggedIn, currentUser.id]);
+
   // GLOBAL NEURAL RELAY
   useEffect(() => {
     if (!isLoggedIn || currentUser.id === '00000000-0000-0000-0000-000000000000') return;
 
-    import { signaling } from './services/signaling'; // Add to top level imports if possible, or just use dynamic import if needed, but import is better.
-
-    // ... inside App component ...
-
-    // Listen for incoming calls
-    useEffect(() => {
-      if (!currentUser?.id) return;
-
-      const unsubscribe = signaling.subscribe(currentUser.id, (type, data) => {
-        if (type === 'offer') {
-          // Find who is calling (we need to fetch user profile, but for now we might only have ID)
-          // To keep it simple, we construct a partial User
-          // In a real app, we'd fetch the full profile
-          const callerId = 'unknown'; // The signal payload should implicitly contain senderId if we structured it that way.
-          // WAIT: The current signaling implementation in signaling.ts uses 'broadcast' but doesn't wrap the senderId.
-          // The 'offer' SDP doesn't contain the name.
-          // Refactor plan: The App needs to know who is calling.
-        }
-      });
-    });
-
-    // Resume existing logic...
     const unsubscribeMessages = cloudSync.subscribeToGlobalMessages(currentUser.id, (payload) => {
       const senderId = payload.sender_id;
       const chatId = payload.chat_id;
