@@ -93,3 +93,9 @@ export interface StatusUpdate {
 }
 
 export type AppView = 'chats' | 'calls' | 'status' | 'settings' | 'secure';
+
+export interface SignalMessage {
+  type: 'offer' | 'answer' | 'candidate';
+  sdp?: RTCSessionDescriptionInit;
+  candidate?: RTCIceCandidateInit;
+}
