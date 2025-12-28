@@ -187,6 +187,26 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, privacy
             >
               Resync Contacts
             </button>
+
+            <button
+              onClick={async () => {
+                if (confirm("This will completely reset the app cache and reload to fix stuck updates. Continue?")) {
+                  if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (let registration of registrations) {
+                      await registration.unregister();
+                    }
+                  }
+                  caches.keys().then(async (names) => {
+                    await Promise.all(names.map(name => caches.delete(name)));
+                    window.location.reload();
+                  });
+                }
+              }}
+              className="w-full bg-red-600/10 text-red-500 border border-red-500/20 font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all mt-3"
+            >
+              ⚠️ RESET APP CACHE (Fix Bugs)
+            </button>
           </div>
         </div>
 

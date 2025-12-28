@@ -166,7 +166,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] bg-red-900 flex flex-col items-center justify-center animate-in fade-in duration-700">
+    <div className="fixed inset-0 z-[1000] bg-[#0b0d10] flex flex-col items-center justify-center animate-in fade-in duration-700">
 
       {/* DEBUG LOG OVERLAY (Temporary) */}
       <div className="absolute top-10 left-0 right-0 z-50 pointer-events-none p-4">
