@@ -20,4 +20,4 @@ View your app in AI Studio: https://ai.studio/apps/drive/1jTujRCR_dS44KwlQ7aetPg
    `npm run dev`
 
 ## Deployment Status
-- Last Update: v3.4 (Fixing Deployment Pipeline)
+- Last Update: v3.5 (Adding Vercel Support & Node Engine Constraint)
