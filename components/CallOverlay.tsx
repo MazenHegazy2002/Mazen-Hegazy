@@ -74,6 +74,43 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     setTimeout(onClose, 800);
   }, [onClose, recipient.id, currentUser.id]);
 
+  const toggleVideoMode = async () => {
+    const newType = currentType === 'video' ? 'voice' : 'video';
+    setCurrentType(newType);
+
+    // If switching TO video, try to get camera
+    if (newType === 'video') {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+
+        // Update senders (simple replace)
+        if (peerRef.current) {
+          const videoTrack = stream.getVideoTracks()[0];
+          const sender = peerRef.current.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) sender.replaceTrack(videoTrack);
+          else peerRef.current.addTrack(videoTrack, stream);
+        }
+      } catch (e) {
+        console.error("Could not upgrade to video:", e);
+      }
+    }
+  };
+
+  // Robust Polling for Video Tracks (Fix for late-arriving media)
+  useEffect(() => {
+    const checkInterval = setInterval(() => {
+      if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
+        const stream = remoteVideoRef.current.srcObject as MediaStream;
+        if (stream.getVideoTracks().length > 0 && currentType === 'voice') {
+          console.log("Late Video Track Detected -> Auto-Switching UI");
+          setCurrentType('video');
+        }
+      }
+    }, 2000);
+    return () => clearInterval(checkInterval);
+  }, [currentType]);
+
   const initializePeer = async (incomingOffer?: any) => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -254,6 +291,14 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
           </>
         ) : (
           <>
+            {/* Video Toggle */}
+            <button
+              onClick={toggleVideoMode}
+              className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${currentType === 'video' ? 'bg-white text-black' : 'bg-white/5 text-zinc-500 hover:text-white'}`}
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+            </button>
+
             <button
               onClick={() => setIsMuted(!isMuted)}
               className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${isMuted ? 'bg-red-500 text-white' : 'bg-white/5 text-zinc-500 hover:text-white'}`}

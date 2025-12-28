@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 4.7 LOADED ⚠️\n\n- Smart Video Detection active\n- Connection Stability Fixes\n\nIf the other person sends video, we show it.");
-      sessionStorage.setItem('v4.7_alerted', 'true');
+      alert("⚠️ VERSION 4.8 LOADED ⚠️\n\n- Added 'Video Camera' Button\n- Tap it to FORCE Video Mode\n- Use this if you see the Avatar screen.");
+      sessionStorage.setItem('v4.8_alerted', 'true');
     }
   }, []);
 
