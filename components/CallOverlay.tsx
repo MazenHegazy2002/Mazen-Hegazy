@@ -39,13 +39,15 @@ const configuration = {
 
 const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type, offerData, onClose, isIncoming = false }) => {
   const [callState, setCallState] = useState<'ringing' | 'connecting' | 'connected' | 'ended'>(isIncoming ? 'ringing' : 'connecting');
+  const [currentType, setCurrentType] = useState(type);
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
 
   const addLog = (msg: string) => {
-    setLogs(prev => [...prev.slice(-4), msg]);
-    console.log(`[CallDebug] ${msg}`);
+    // Only keep logs if diagnostics are really needed, otherwise keep silent
+    // setLogs(prev => [...prev.slice(-4), msg]); 
+    // console.log(`[CallDebug] ${msg}`);
   };
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -74,37 +76,26 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
   const initializePeer = async (incomingOffer?: any) => {
     try {
-      addLog("v4.5 Starting Connection (Relay Mode)...");
-
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("Camera API missing! Are you on HTTPS?");
       }
 
-      addLog("Getting User Media...");
+      console.log("Getting User Media for type:", currentType);
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: type === 'video' ? { facingMode: 'user' } : false
+        video: currentType === 'video' ? { facingMode: 'user' } : false
       });
-      addLog("Got Local Stream");
 
-      if (localVideoRef.current && type === 'video') {
+      if (localVideoRef.current && currentType === 'video') {
         localVideoRef.current.srcObject = stream;
       }
 
-      addLog("Creating Peer Connection...");
       const peer = new RTCPeerConnection(configuration);
       peerRef.current = peer;
 
       // Monitor Connection State
       peer.oniceconnectionstatechange = () => {
-        addLog(`ICE State: ${peer.iceConnectionState}`);
-        if (peer.iceConnectionState === 'failed') {
-          addLog("ICE FAILED - Relay Blocked?");
-        }
-      };
-
-      peer.onconnectionstatechange = () => {
-        addLog(`Conn State: ${peer.connectionState}`);
+        console.log(`ICE State: ${peer.iceConnectionState}`);
       };
 
       // Add local tracks
@@ -112,17 +103,23 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
       // Handle remote stream
       peer.ontrack = (event) => {
-        addLog("Got Remote Track!");
+        console.log("Got Remote Track", event.streams[0].getTracks());
+
+        // AUTO-DETECT VIDEO: If we receive a video track, switch UI to video mode
+        if (event.streams[0].getVideoTracks().length > 0) {
+          setCurrentType('video');
+        }
+
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = event.streams[0];
         }
+
         // IMPORTANT: Also bind to audio element ensuring sound works
-        if (audioRef.current) {
-          addLog("Binding Audio...");
+        // Fix: Only bind if not already bound to avoid interruption
+        if (audioRef.current && audioRef.current.srcObject !== event.streams[0]) {
+          console.log("Binding Audio...");
           audioRef.current.srcObject = event.streams[0];
-          audioRef.current.play()
-            .then(() => addLog("Audio Playing"))
-            .catch(e => addLog("Audio Play Err: " + e.message));
+          audioRef.current.play().catch(e => console.log("Audio Play Err: " + e.message));
         }
         setCallState('connected');
       };
@@ -137,7 +134,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       // Listen for signs (candidates, end, etc.)
       signaling.subscribe(currentUser.id, async (type, data) => {
         if (!peerRef.current) return;
-        addLog(`Signal: ${type}`);
 
         if (type === 'offer') {
           // Re-negotiation (future proofing)
@@ -155,25 +151,22 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       // SIGNALING LOGIC
       if (incomingOffer) {
         // WE ARE ANSWERING
-        addLog("Accepting Offer...");
         await peer.setRemoteDescription(new RTCSessionDescription(incomingOffer));
         const answer = await peer.createAnswer();
         await peer.setLocalDescription(answer);
         signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
       } else {
         // WE ARE CALLING
-        addLog("Initiating Offer...");
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
         // Clean the offer object to ensure it's serializable and include callType
-        const signalData = { type: offer.type, sdp: offer.sdp, callType: type };
+        const signalData = { type: offer.type, sdp: offer.sdp, callType: currentType };
         signaling.sendSignal(currentUser.id, recipient.id, 'offer', signalData);
       }
 
       return stream;
 
     } catch (err: any) {
-      addLog(`Error: ${err.message}`);
       console.error("Call Setup Failed:", err);
     }
   };
@@ -204,7 +197,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
 
       {/* Remote Video (Full Screen) */}
-      {type === 'video' && (
+      {currentType === 'video' && (
         <video
           ref={remoteVideoRef}
           autoPlay playsInline
@@ -213,7 +206,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       )}
 
       {/* Connection Status / Avatar */}
-      {!(type === 'video' && callState === 'connected') && (
+      {!(currentType === 'video' && callState === 'connected') && (
         <div className="relative z-10 flex flex-col items-center text-center px-6">
           <div className={`w-36 h-36 rounded-[2.5rem] border-4 p-1 mb-8 shadow-2xl transition-all duration-700 bg-zinc-800 ${callState === 'connected' ? 'border-blue-500 scale-105' : 'border-white/5 ' + (callState === 'ringing' ? 'animate-bounce' : 'animate-pulse')}`}>
             <img src={recipient.avatar} alt="" className="w-full h-full rounded-[2rem] object-cover" />
@@ -234,7 +227,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       )}
 
       {/* Local Video (PIP) */}
-      {type === 'video' && callState !== 'ringing' && (
+      {currentType === 'video' && callState !== 'ringing' && (
         <div className="absolute top-8 right-8 w-32 h-48 rounded-2xl border-2 border-white/10 overflow-hidden shadow-2xl z-20">
           <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
         </div>

@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 4.6 LOADED ⚠️\n\n- Connection Confirmed!\n- Logs Removed\n- Video/Audio Optimized");
-      sessionStorage.setItem('v4.6_alerted', 'true');
+      alert("⚠️ VERSION 4.7 LOADED ⚠️\n\n- Smart Video Detection active\n- Connection Stability Fixes\n\nIf the other person sends video, we show it.");
+      sessionStorage.setItem('v4.7_alerted', 'true');
     }
   }, []);
 
