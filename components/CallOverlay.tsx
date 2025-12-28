@@ -45,9 +45,9 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
   const [logs, setLogs] = useState<string[]>([]);
 
   const addLog = (msg: string) => {
-    // Only keep logs if diagnostics are really needed, otherwise keep silent
-    // setLogs(prev => [...prev.slice(-4), msg]); 
-    // console.log(`[CallDebug] ${msg}`);
+    // Restore logs for debugging v4.12
+    setLogs(prev => [...prev.slice(-4), msg]);
+    console.log(`[CallDebug] ${msg}`);
   };
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -81,6 +81,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     // If switching TO video, try to get camera
     if (newType === 'video') {
       try {
+        addLog("Upgrading to Video...");
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
@@ -98,6 +99,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
             videoSender.replaceTrack(videoTrack);
           } else {
             console.log("Adding new video track...");
+            addLog("Adding Video Track");
             peerRef.current.addTrack(videoTrack, stream);
           }
 
@@ -107,14 +109,17 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
             audioSender.replaceTrack(audioTrack);
           }
 
-          // Trigger Renegotiation if needed (only if we added a track, but doing it always is safer for "Call Type" sync)
+          // Trigger Renegotiation if needed
           if (!videoSender) {
-            const offer = await peerRef.current.createOffer();
+            addLog("Negotiating Video...");
+            // USE ICE RESTART to ensure clean connection for new tracks
+            const offer = await peerRef.current.createOffer({ iceRestart: true });
             await peerRef.current.setLocalDescription(offer);
             signaling.sendSignal(currentUser.id, recipient.id, 'offer', { type: offer.type, sdp: offer.sdp, callType: 'video' });
           }
         }
-      } catch (e) {
+      } catch (e: any) {
+        addLog("Video Upgrade Err:" + e.message);
         console.error("Could not upgrade to video:", e);
       }
     }
@@ -279,6 +284,13 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     <div className="fixed inset-0 z-[1000] bg-[#0b0d10] flex flex-col items-center justify-center animate-in fade-in duration-700">
 
       <audio ref={audioRef} autoPlay playsInline />
+
+      {/* DEBUG LOGS RESTORED FOR DIAGNOSIS v4.12 */}
+      <div className="absolute top-10 left-0 right-0 z-50 pointer-events-none p-4">
+        <div className="bg-black/50 text-[#00ff00] font-mono text-[10px] p-2 rounded backdrop-blur max-w-sm mx-auto">
+          {logs.map((log, i) => <div key={i}>{log}</div>)}
+        </div>
+      </div>
 
 
 

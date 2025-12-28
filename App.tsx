@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 4.11 LOADED ⚠️\n\n- Fixed 'No Voice in Video' Bug\n- Audio now stays connected even if video loads");
-      sessionStorage.setItem('v4.11_alerted', 'true');
+      alert("⚠️ VERSION 4.12 LOADED ⚠️\n\n- RESTORED DEBUG LOGS\n- Added Connection Reset (ICE Restart)\n\nPlease screenshot the GREEN TEXT.");
+      sessionStorage.setItem('v4.12_alerted', 'true');
     }
   }, []);
 
