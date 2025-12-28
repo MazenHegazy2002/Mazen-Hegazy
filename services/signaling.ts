@@ -4,12 +4,12 @@ import { supabase } from './supabase';
 type SignalCallback = (type: string, payload: any) => void;
 
 export const signaling = {
-    subscribe: (userId: string, onSignal: SignalCallback) => {
+    subscribe: (userId: string, onSignal: (type: string, data: any, senderId: string) => void) => {
         console.log(`[Signaling] Subscribing to channel: calls:${userId}`);
         const channel = supabase.channel(`calls:${userId}`)
             .on('broadcast', { event: 'signal' }, (payload) => {
-                console.log(`[Signaling] Received signal on calls:${userId}:`, payload.payload.type);
-                onSignal(payload.payload.type, payload.payload.data);
+                console.log(`[Signaling] Received signal on calls:${userId} from ${payload.payload.senderId}:`, payload.payload.type);
+                onSignal(payload.payload.type, payload.payload.data, payload.payload.senderId);
             })
             .subscribe((status) => {
                 console.log(`[Signaling] Channel calls:${userId} status:`, status);
@@ -22,24 +22,42 @@ export const signaling = {
         };
     },
 
-    sendSignal: async (recipientId: string, type: 'offer' | 'answer' | 'candidate' | 'end', data: any) => {
-        console.log(`[Signaling] Sending ${type} to calls:${recipientId}`);
-        const channel = supabase.channel(`calls:${recipientId}`);
+    sendSignal: async (senderId: string, recipientId: string, type: 'offer' | 'answer' | 'candidate' | 'end', data: any) => {
+        console.log(`[Signaling] Sending ${type} to calls:${recipientId} from ${senderId}`);
+        return new Promise<void>((resolve, reject) => {
+            const channel = supabase.channel(`calls:${recipientId}`);
 
-        channel.subscribe(async (status) => {
-            if (status === 'SUBSCRIBED') {
-                await channel.send({
-                    type: 'broadcast',
-                    event: 'signal',
-                    payload: { type, data }
-                });
-                console.log(`[Signaling] Sent ${type} to calls:${recipientId}`);
+            const timeout = setTimeout(() => {
+                supabase.removeChannel(channel);
+                reject(new Error("Signaling Timed Out (Connection blocked? Check DB Status)"));
+            }, 5000);
 
-                // Give it a moment to flush, then leave
-                setTimeout(() => {
+            channel.subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    clearTimeout(timeout);
+                    try {
+                        await channel.send({
+                            type: 'broadcast',
+                            event: 'signal',
+                            payload: { type, data, senderId }
+                        });
+                        console.log(`[Signaling] Sent ${type} to calls:${recipientId}`);
+
+                        // Give it a moment to flush, then leave
+                        setTimeout(() => {
+                            supabase.removeChannel(channel);
+                            resolve();
+                        }, 500);
+                    } catch (e: any) {
+                        supabase.removeChannel(channel);
+                        reject(e);
+                    }
+                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    clearTimeout(timeout);
                     supabase.removeChannel(channel);
-                }, 1000);
-            }
+                    reject(new Error(`Signaling Failed: ${status}`));
+                }
+            });
         });
     }
 };

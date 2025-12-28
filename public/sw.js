@@ -4,7 +4,7 @@
  * Handles background push notifications and asset caching
  */
 
-const CACHE_NAME = 'zylos-neural-v3';
+const CACHE_NAME = 'zylos-neural-v3.4';
 const ALLOWED_ASSETS = [
     '/',
     '/index.html',

@@ -4,7 +4,7 @@ import ChatWindow from './components/ChatWindow';
 import StatusSection from './components/StatusSection';
 import CallOverlay from './components/CallOverlay';
 import ContactList from './components/ContactList';
-import SettingsView from './components/SettingsView';
+import SettingsPanel from './components/SettingsPanel';
 import SignIn from './components/SignIn';
 import NotificationToast from './components/NotificationToast';
 import GlobalAudioPlayer from './components/GlobalAudioPlayer';
@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 3.3 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
-      sessionStorage.setItem('v3.3_alerted', 'true');
+      alert("⚠️ VERSION 3.5 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
+      sessionStorage.setItem('v3.5_alerted', 'true');
     }
   }, []);
 
@@ -111,17 +111,18 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isLoggedIn || currentUser.id === '00000000-0000-0000-0000-000000000000') return;
 
-    const unsubscribe = signaling.subscribe(currentUser.id, (type, data) => {
+    const unsubscribe = signaling.subscribe(currentUser.id, (type, data, senderId) => {
       if (type === 'offer') {
-        // Create a placeholder caller needed for the UI
-        const unknownUser: User = {
-          id: 'unknown-caller',
+        // Resolve caller from contacts or create temporary user with correct ID
+        const knownContact = users.find(u => u.id === senderId);
+        const caller: User = knownContact || {
+          id: senderId, // CRITICAL: This allows the answer to be sent back to the correct channel
           name: 'Incoming Call',
           phone: '',
           avatar: 'https://ui-avatars.com/api/?name=Incoming&background=random',
           status: 'online'
         };
-        setActiveCall({ recipient: unknownUser, type: 'voice', isIncoming: true });
+        setActiveCall({ recipient: caller, type: 'voice', isIncoming: true });
       }
     });
     return () => unsubscribe();
@@ -246,7 +247,7 @@ const App: React.FC = () => {
             />
           )}
           {currentView === 'settings' && (
-            <SettingsView user={currentUser} onUpdateUser={setCurrentUser} privacy={{} as any} onUpdatePrivacy={() => { }} />
+            <SettingsPanel user={currentUser} onUpdateUser={setCurrentUser} privacy={{} as any} onUpdatePrivacy={() => { }} />
           )}
         </div>
 

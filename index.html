@@ -133,7 +133,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
+        navigator.serviceWorker.register(`./sw.js?v=${new Date().getTime()}`)
           .then(reg => console.log('Zylos Neural SW Active'))
           .catch(err => console.warn('SW deferred', err));
       });

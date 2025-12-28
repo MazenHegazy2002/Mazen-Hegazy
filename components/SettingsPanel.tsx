@@ -12,7 +12,7 @@ interface SettingsViewProps {
   isNative?: boolean;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, privacy, onUpdatePrivacy, isNative }) => {
+const SettingsPanel: React.FC<SettingsViewProps> = ({ user, onUpdateUser, privacy, onUpdatePrivacy, isNative }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [tempName, setTempName] = useState(user.name);
   const [tempAvatar, setTempAvatar] = useState(user.avatar);
@@ -155,7 +155,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, privacy
             <button
               onClick={async () => {
                 try {
-                  alert("SENDING TEST SIGNAL...\nWait for success alert.");
+                  alert(`SENDING TEST SIGNAL...\nDB Connection: ${dbStatus.message}\nWait for success alert.`);
                   const signaling = await import('../services/signaling').then(m => m.signaling);
 
                   // Listen for our own signal
@@ -267,4 +267,4 @@ const ToggleItem: React.FC<{ label: string, sub: string, isActive: boolean, onTo
   </div>
 );
 
-export default SettingsView;
+export default SettingsPanel;
