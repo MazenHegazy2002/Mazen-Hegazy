@@ -16,20 +16,185 @@ const configuration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.services.mozilla.com' },
     { urls: 'stun:global.stun.twilio.com:3478' },
-    { urls: 'stun:stun.stunprotocol.org:3478' }
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    }
   ],
   iceCandidatePoolSize: 10,
 };
 
 const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type, offerData, onClose, isIncoming = false }) => {
-  // ... (existing state) ...
+  const [callState, setCallState] = useState<'ringing' | 'connecting' | 'connected' | 'ended'>(isIncoming ? 'ringing' : 'connecting');
+  const [duration, setDuration] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
 
-  // (Helper to keep logs clean - removed for brevity in diff but logic remains)
+  const addLog = (msg: string) => {
+    setLogs(prev => [...prev.slice(-4), msg]);
+    console.log(`[CallDebug] ${msg}`);
+  };
+
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const peerRef = useRef<RTCPeerConnection | null>(null);
+
+  useEffect(() => {
+    let interval: number;
+    if (callState === 'connected') {
+      interval = window.setInterval(() => setDuration(prev => prev + 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [callState]);
+
+  const stopCall = useCallback(() => {
+    if (peerRef.current) {
+      peerRef.current.close();
+      peerRef.current = null;
+    }
+    // Notify other peer
+    signaling.sendSignal(currentUser.id, recipient.id, 'end', {});
+    setCallState('ended');
+    setTimeout(onClose, 800);
+  }, [onClose, recipient.id, currentUser.id]);
+
+  const initializePeer = async (incomingOffer?: any) => {
+    try {
+      addLog("v4.5 Starting Connection (Relay Mode)...");
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Camera API missing! Are you on HTTPS?");
+      }
+
+      addLog("Getting User Media...");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: type === 'video' ? { facingMode: 'user' } : false
+      });
+      addLog("Got Local Stream");
+
+      if (localVideoRef.current && type === 'video') {
+        localVideoRef.current.srcObject = stream;
+      }
+
+      addLog("Creating Peer Connection...");
+      const peer = new RTCPeerConnection(configuration);
+      peerRef.current = peer;
+
+      // Monitor Connection State
+      peer.oniceconnectionstatechange = () => {
+        addLog(`ICE State: ${peer.iceConnectionState}`);
+        if (peer.iceConnectionState === 'failed') {
+          addLog("ICE FAILED - Relay Blocked?");
+        }
+      };
+
+      peer.onconnectionstatechange = () => {
+        addLog(`Conn State: ${peer.connectionState}`);
+      };
+
+      // Add local tracks
+      stream.getTracks().forEach(track => peer.addTrack(track, stream));
+
+      // Handle remote stream
+      peer.ontrack = (event) => {
+        addLog("Got Remote Track!");
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = event.streams[0];
+        }
+        // IMPORTANT: Also bind to audio element ensuring sound works
+        if (audioRef.current) {
+          addLog("Binding Audio...");
+          audioRef.current.srcObject = event.streams[0];
+          audioRef.current.play()
+            .then(() => addLog("Audio Playing"))
+            .catch(e => addLog("Audio Play Err: " + e.message));
+        }
+        setCallState('connected');
+      };
+
+      // Handle ICE candidates
+      peer.onicecandidate = (event) => {
+        if (event.candidate) {
+          signaling.sendSignal(currentUser.id, recipient.id, 'candidate', event.candidate);
+        }
+      };
+
+      // Listen for signs (candidates, end, etc.)
+      signaling.subscribe(currentUser.id, async (type, data) => {
+        if (!peerRef.current) return;
+        addLog(`Signal: ${type}`);
+
+        if (type === 'offer') {
+          // Re-negotiation (future proofing)
+        } else if (type === 'answer') {
+          await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
+        } else if (type === 'candidate') {
+          await peerRef.current.addIceCandidate(new RTCIceCandidate(data));
+        } else if (type === 'end') {
+          setCallState('ended');
+          setTimeout(onClose, 800);
+          stream.getTracks().forEach(t => t.stop());
+        }
+      });
+
+      // SIGNALING LOGIC
+      if (incomingOffer) {
+        // WE ARE ANSWERING
+        addLog("Accepting Offer...");
+        await peer.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
+      } else {
+        // WE ARE CALLING
+        addLog("Initiating Offer...");
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        // Clean the offer object to ensure it's serializable and include callType
+        const signalData = { type: offer.type, sdp: offer.sdp, callType: type };
+        signaling.sendSignal(currentUser.id, recipient.id, 'offer', signalData);
+      }
+
+      return stream;
+
+    } catch (err: any) {
+      addLog(`Error: ${err.message}`);
+      console.error("Call Setup Failed:", err);
+    }
+  };
+
+  // Only auto-start if outgoing
+  useEffect(() => {
+    if (!isIncoming) {
+      initializePeer();
+    }
+  }, []);
+
+  const handleAnswer = async () => {
+    setCallState('connecting');
+    await initializePeer(offerData);
+  };
+
+  const formatTime = (s: number) => {
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="fixed inset-0 z-[1000] bg-[#0b0d10] flex flex-col items-center justify-center animate-in fade-in duration-700">
