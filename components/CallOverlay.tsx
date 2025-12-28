@@ -105,7 +105,11 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         }
         // IMPORTANT: Also bind to audio element ensuring sound works
         if (audioRef.current) {
+          addLog("Binding Audio...");
           audioRef.current.srcObject = event.streams[0];
+          audioRef.current.play()
+            .then(() => addLog("Audio Playing"))
+            .catch(e => addLog("Audio Play Err: " + e.message));
         }
         setCallState('connected');
       };

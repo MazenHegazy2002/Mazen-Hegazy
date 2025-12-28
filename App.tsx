@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 3.9 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
-      sessionStorage.setItem('v3.9_alerted', 'true');
+      alert("⚠️ VERSION 4.0 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
+      sessionStorage.setItem('v4.0_alerted', 'true');
     }
   }, []);
 
@@ -34,7 +34,7 @@ const App: React.FC = () => {
     id: '00000000-0000-0000-0000-000000000000', name: '', phone: '', avatar: '', status: 'online'
   });
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
-  const [activeCall, setActiveCall] = useState<{ recipient: User; type: 'voice' | 'video'; offerData?: any } | null>(null);
+  const [activeCall, setActiveCall] = useState<{ recipient: User; type: 'voice' | 'video'; offerData?: any; isIncoming?: boolean } | null>(null);
   const [showContacts, setShowContacts] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [playback, setPlayback] = useState<PlaybackState>({
@@ -330,7 +330,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {activeCall && <CallOverlay recipient={activeCall.recipient} currentUser={currentUser} type={activeCall.type} offerData={activeCall.offerData} onClose={() => setActiveCall(null)} />}
+      {activeCall && <CallOverlay recipient={activeCall.recipient} currentUser={currentUser} type={activeCall.type} offerData={activeCall.offerData} isIncoming={activeCall.isIncoming} onClose={() => setActiveCall(null)} />}
     </div>
   );
 };
