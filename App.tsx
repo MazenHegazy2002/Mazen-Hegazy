@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 4.3 LOADED ⚠️\n\n- Global Connectivity Update\n- Added Backup STUN Servers\n\nRetrying connection through new routes...");
-      sessionStorage.setItem('v4.3_alerted', 'true');
+      alert("⚠️ VERSION 4.4 LOADED ⚠️\n\nDIAGNOSTICS MODE\nLogs are visible again.\nPlease screenshot the green text.");
+      sessionStorage.setItem('v4.4_alerted', 'true');
     }
   }, []);
 
