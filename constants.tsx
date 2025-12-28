@@ -1,6 +1,6 @@
 import { User, Chat } from './types';
 
-export const APP_VERSION = '4.2';
+export const APP_VERSION = '4.3';
 
 export interface Country {
   name: string;
