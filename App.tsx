@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 3.7 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
-      sessionStorage.setItem('v3.7_alerted', 'true');
+      alert("⚠️ VERSION 3.8 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
+      sessionStorage.setItem('v3.8_alerted', 'true');
     }
   }, []);
 
@@ -34,7 +34,7 @@ const App: React.FC = () => {
     id: '00000000-0000-0000-0000-000000000000', name: '', phone: '', avatar: '', status: 'online'
   });
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
-  const [activeCall, setActiveCall] = useState<{ recipient: User; type: 'voice' | 'video' } | null>(null);
+  const [activeCall, setActiveCall] = useState<{ recipient: User; type: 'voice' | 'video'; offerData?: any } | null>(null);
   const [showContacts, setShowContacts] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [playback, setPlayback] = useState<PlaybackState>({
@@ -122,7 +122,7 @@ const App: React.FC = () => {
           avatar: 'https://ui-avatars.com/api/?name=Incoming&background=random',
           status: 'online'
         };
-        setActiveCall({ recipient: caller, type: 'voice', isIncoming: true });
+        setActiveCall({ recipient: caller, type: 'voice', isIncoming: true, offerData: data });
       }
     });
     return () => unsubscribe();
@@ -330,7 +330,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {activeCall && <CallOverlay recipient={activeCall.recipient} currentUser={currentUser} type={activeCall.type} onClose={() => setActiveCall(null)} />}
+      {activeCall && <CallOverlay recipient={activeCall.recipient} currentUser={currentUser} type={activeCall.type} offerData={activeCall.offerData} onClose={() => setActiveCall(null)} />}
     </div>
   );
 };
