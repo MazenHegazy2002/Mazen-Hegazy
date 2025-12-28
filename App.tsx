@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 4.1 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
-      sessionStorage.setItem('v4.1_alerted', 'true');
+      alert("⚠️ VERSION 4.2 LOADED ⚠️\n\n- Video UI Cleaned\n- Debug Logs Removed\n\nGo to Settings -> Diagnostics if you need to reset.");
+      sessionStorage.setItem('v4.2_alerted', 'true');
     }
   }, []);
 

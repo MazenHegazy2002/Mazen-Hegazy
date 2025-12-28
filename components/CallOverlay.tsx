@@ -189,13 +189,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       {/* ALWAYS RENDER AUDIO FOR VOICE CALLS */}
       <audio ref={audioRef} autoPlay playsInline />
 
-      {/* DEBUG LOG OVERLAY (Temporary) */}
-      <div className="absolute top-10 left-0 right-0 z-50 pointer-events-none p-4">
-        <div className="bg-black/50 text-[#00ff00] font-mono text-[10px] p-2 rounded backdrop-blur max-w-sm mx-auto">
-          {logs.map((log, i) => <div key={i}>{log}</div>)}
-        </div>
-      </div>
-
       {/* Remote Video (Full Screen) */}
       {type === 'video' && (
         <video
@@ -206,23 +199,25 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       )}
 
       {/* Connection Status / Avatar */}
-      <div className="relative z-10 flex flex-col items-center text-center px-6">
-        <div className={`w-36 h-36 rounded-[2.5rem] border-4 p-1 mb-8 shadow-2xl transition-all duration-700 bg-zinc-800 ${callState === 'connected' ? 'border-blue-500 scale-105' : 'border-white/5 ' + (callState === 'ringing' ? 'animate-bounce' : 'animate-pulse')}`}>
-          <img src={recipient.avatar} alt="" className="w-full h-full rounded-[2rem] object-cover" />
-        </div>
-        <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{recipient.name}</h2>
+      {!(type === 'video' && callState === 'connected') && (
+        <div className="relative z-10 flex flex-col items-center text-center px-6">
+          <div className={`w-36 h-36 rounded-[2.5rem] border-4 p-1 mb-8 shadow-2xl transition-all duration-700 bg-zinc-800 ${callState === 'connected' ? 'border-blue-500 scale-105' : 'border-white/5 ' + (callState === 'ringing' ? 'animate-bounce' : 'animate-pulse')}`}>
+            <img src={recipient.avatar} alt="" className="w-full h-full rounded-[2rem] object-cover" />
+          </div>
+          <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{recipient.name}</h2>
 
-        <div className="flex flex-col items-center space-y-2">
-          {callState === 'ringing' ? (
-            <p className="text-sm font-bold uppercase tracking-widest text-blue-400 animate-pulse">Incoming Call...</p>
-          ) : (
-            <p className={`text-[10px] font-black uppercase tracking-[0.4em] ${callState === 'connecting' ? 'text-zinc-600 animate-pulse' : 'text-blue-500'}`}>
-              {callState === 'connecting' ? 'Encrypting Connection' : 'Neural Link Established'}
-            </p>
-          )}
-          {callState === 'connected' && <span className="text-white font-mono text-sm opacity-60 tabular-nums">{formatTime(duration)}</span>}
+          <div className="flex flex-col items-center space-y-2">
+            {callState === 'ringing' ? (
+              <p className="text-sm font-bold uppercase tracking-widest text-blue-400 animate-pulse">Incoming Call...</p>
+            ) : (
+              <p className={`text-[10px] font-black uppercase tracking-[0.4em] ${callState === 'connecting' ? 'text-zinc-600 animate-pulse' : 'text-blue-500'}`}>
+                {callState === 'connecting' ? 'Encrypting Connection' : 'Neural Link Established'}
+              </p>
+            )}
+            {callState === 'connected' && <span className="text-white font-mono text-sm opacity-60 tabular-nums">{formatTime(duration)}</span>}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Local Video (PIP) */}
       {type === 'video' && callState !== 'ringing' && (
