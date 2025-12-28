@@ -88,8 +88,16 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         if (peerRef.current) {
           const videoTrack = stream.getVideoTracks()[0];
           const sender = peerRef.current.getSenders().find(s => s.track?.kind === 'video');
-          if (sender) sender.replaceTrack(videoTrack);
-          else peerRef.current.addTrack(videoTrack, stream);
+          if (sender) {
+            sender.replaceTrack(videoTrack);
+          } else {
+            console.log("Adding new video track, triggering renegotiation...");
+            peerRef.current.addTrack(videoTrack, stream);
+            // Trigger Renegotiation
+            const offer = await peerRef.current.createOffer();
+            await peerRef.current.setLocalDescription(offer);
+            signaling.sendSignal(currentUser.id, recipient.id, 'offer', { type: offer.type, sdp: offer.sdp, callType: 'video' });
+          }
         }
       } catch (e) {
         console.error("Could not upgrade to video:", e);
@@ -140,24 +148,45 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
       // Handle remote stream
       peer.ontrack = (event) => {
-        console.log("Got Remote Track", event.streams[0].getTracks());
+        console.log("Got Remote Track:", event.track.kind, event.streams[0].id);
 
-        // AUTO-DETECT VIDEO: If we receive a video track, switch UI to video mode
-        if (event.streams[0].getVideoTracks().length > 0) {
+        const stream = event.streams[0];
+
+        // AUTO-DETECT VIDEO: If this is a video track, switch UI
+        if (event.track.kind === 'video') {
+          console.log("Video Track Detected -> Switching UI");
           setCurrentType('video');
         }
 
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
+        // Bind Video Element (if needed and available)
+        if (remoteVideoRef.current && !remoteVideoRef.current.srcObject) {
+          console.log("Binding Remote Video Element");
+          remoteVideoRef.current.srcObject = stream;
+        } else if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== stream) {
+          // If stream changed
+          console.log("Updating Remote Video Stream");
+          remoteVideoRef.current.srcObject = stream;
         }
 
-        // IMPORTANT: Also bind to audio element ensuring sound works
-        // Fix: Only bind if not already bound to avoid interruption
-        if (audioRef.current && audioRef.current.srcObject !== event.streams[0]) {
-          console.log("Binding Audio...");
-          audioRef.current.srcObject = event.streams[0];
-          audioRef.current.play().catch(e => console.log("Audio Play Err: " + e.message));
+        // Bind Audio Element (Safely)
+        if (audioRef.current) {
+          if (!audioRef.current.srcObject) {
+            console.log("Binding Remote Audio Element (First Time)");
+            audioRef.current.srcObject = stream;
+            audioRef.current.play().catch(e => console.error("Audio Play Error:", e));
+          } else if (audioRef.current.srcObject !== stream) {
+            console.log("Binding Remote Audio Element (Stream Changed)");
+            audioRef.current.srcObject = stream;
+            audioRef.current.play().catch(e => console.error("Audio Play Error (Update):", e));
+          } else {
+            // Already bound, just ensure playing
+            if (audioRef.current.paused) {
+              console.log("Audio paused, forcing play");
+              audioRef.current.play().catch(e => console.error("Audio Resume Error:", e));
+            }
+          }
         }
+
         setCallState('connected');
       };
 
@@ -173,7 +202,15 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         if (!peerRef.current) return;
 
         if (type === 'offer') {
-          // Re-negotiation (future proofing)
+          // HANDLE RENEGOTIATION (Adding Video mid-call)
+          console.log("Renegotiating connection (Incoming Offer)...");
+          await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
+          const answer = await peerRef.current.createAnswer();
+          await peerRef.current.setLocalDescription(answer);
+          signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
+
+          if (data.callType === 'video') setCurrentType('video');
+
         } else if (type === 'answer') {
           await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
         } else if (type === 'candidate') {

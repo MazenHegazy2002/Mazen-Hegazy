@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 4.8 LOADED ⚠️\n\n- Added 'Video Camera' Button\n- Tap it to FORCE Video Mode\n- Use this if you see the Avatar screen.");
-      sessionStorage.setItem('v4.8_alerted', 'true');
+      alert("⚠️ VERSION 4.10 LOADED ⚠️\n\n- Fixed 'Switch to Video' Button\n- It now correctly upgrades the call\n- Both sides must verify update!");
+      sessionStorage.setItem('v4.10_alerted', 'true');
     }
   }, []);
 
