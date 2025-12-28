@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 3.6 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
-      sessionStorage.setItem('v3.6_alerted', 'true');
+      alert("⚠️ VERSION 3.7 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
+      sessionStorage.setItem('v3.7_alerted', 'true');
     }
   }, []);
 
@@ -330,7 +330,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {activeCall && <CallOverlay recipient={activeCall.recipient} type={activeCall.type} onClose={() => setActiveCall(null)} />}
+      {activeCall && <CallOverlay recipient={activeCall.recipient} currentUser={currentUser} type={activeCall.type} onClose={() => setActiveCall(null)} />}
     </div>
   );
 };
