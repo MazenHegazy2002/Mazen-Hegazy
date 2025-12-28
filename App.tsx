@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 4.0 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
-      sessionStorage.setItem('v4.0_alerted', 'true');
+      alert("⚠️ VERSION 4.1 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
+      sessionStorage.setItem('v4.1_alerted', 'true');
     }
   }, []);
 
@@ -122,7 +122,12 @@ const App: React.FC = () => {
           avatar: 'https://ui-avatars.com/api/?name=Incoming&background=random',
           status: 'online'
         };
-        setActiveCall({ recipient: caller, type: 'voice', isIncoming: true, offerData: data });
+        setActiveCall({
+          recipient: caller,
+          type: data.callType === 'video' ? 'video' : 'voice',
+          isIncoming: true,
+          offerData: data
+        });
       }
     });
     return () => unsubscribe();

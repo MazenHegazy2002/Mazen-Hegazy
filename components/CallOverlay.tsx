@@ -152,7 +152,9 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         addLog("Initiating Offer...");
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
-        signaling.sendSignal(currentUser.id, recipient.id, 'offer', offer);
+        // Clean the offer object to ensure it's serializable and include callType
+        const signalData = { type: offer.type, sdp: offer.sdp, callType: type };
+        signaling.sendSignal(currentUser.id, recipient.id, 'offer', signalData);
       }
 
       return stream;
