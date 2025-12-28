@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 4.5 LOADED ⚠️\n\n- Firewall Bypass Active (TURN)\n- Call Logic Restored\n\nThis uses a Relay Server to bypass blocks.");
-      sessionStorage.setItem('v4.5_alerted', 'true');
+      alert("⚠️ VERSION 4.6 LOADED ⚠️\n\n- Connection Confirmed!\n- Logs Removed\n- Video/Audio Optimized");
+      sessionStorage.setItem('v4.6_alerted', 'true');
     }
   }, []);
 

@@ -201,12 +201,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
       <audio ref={audioRef} autoPlay playsInline />
 
-      {/* DEBUG LOGS RESTORED FOR DIAGNOSIS */}
-      <div className="absolute top-10 left-0 right-0 z-50 pointer-events-none p-4">
-        <div className="bg-black/50 text-[#00ff00] font-mono text-[10px] p-2 rounded backdrop-blur max-w-sm mx-auto">
-          {logs.map((log, i) => <div key={i}>{log}</div>)}
-        </div>
-      </div>
+
 
       {/* Remote Video (Full Screen) */}
       {type === 'video' && (
