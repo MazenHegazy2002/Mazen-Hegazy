@@ -136,89 +136,109 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, privacy
             <p className="text-xs text-zinc-500 leading-relaxed mb-4">
               If your profile or contacts are not updating, use this tool to force a cloud synchronization and view any errors.
             </p>
-            <button
-              onClick={async () => {
-                try {
-                  alert(`Starting Manual Sync...\nUUID: ${user.id}`);
-                  await cloudSync.upsertProfile(user);
-                  alert("✅ SUCCESS: Profile Synced!\nDatabase connection is working.");
-                  setDbStatus({ ok: true, message: 'Synced Manually' });
+            setDbStatus({ok: true, message: 'Synced Manually' });
                 } catch (e: any) {
-                  alert(`❌ ERROR: Failed to Sync\n${e.message || JSON.stringify(e)}`);
+              alert(`❌ ERROR: Failed to Sync\n${e.message || JSON.stringify(e)}`);
                 }
               }}
-              className="w-full bg-orange-600/10 text-orange-500 border border-orange-500/20 font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-orange-600 hover:text-white transition-all mb-3"
+            className="w-full bg-orange-600/10 text-orange-500 border border-orange-500/20 font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-orange-600 hover:text-white transition-all mb-3"
             >
-              Force Sync Profile
-            </button>
-            <button
-              onClick={async () => {
-                try {
-                  alert("Syncing Contact List...");
-                  // 1. Get local contacts
-                  const contacts = await import('../services/database').then(m => m.DB.getContacts());
-                  let updatedCount = 0;
-                  const updatedContacts = [];
+            Force Sync Profile
+          </button>
 
-                  // 2. Fetch fresh data for each
-                  for (const c of contacts) {
-                    const fresh = await cloudSync.getProfileByPhone(c.phone);
-                    if (fresh && fresh.id !== c.id) {
-                      updatedContacts.push({ ...c, id: fresh.id, avatar: fresh.avatar || c.avatar });
-                      updatedCount++;
-                    } else {
-                      updatedContacts.push(c);
-                    }
+          <button
+            onClick={async () => {
+              try {
+                alert("SENDING TEST SIGNAL...\nWait for success alert.");
+                const signaling = await import('../services/signaling').then(m => m.signaling);
+
+                // Listen for our own signal
+                const unsub = signaling.subscribe(user.id, (type, data) => {
+                  if (type === 'offer' && data.isTest) {
+                    alert("✅ SIGNAL RECEIVED!\nDatabase Signaling is working perfectly.");
+                    unsub();
                   }
+                });
 
-                  // 3. Save back if changes found
-                  if (updatedCount > 0) {
-                    await import('../services/database').then(m => m.DB.saveContacts(updatedContacts));
-                    alert(`✅ FIXED: Updated ${updatedCount} contacts with new IDs.\nTry sending messages now.`);
-                    window.location.reload(); // Reload to apply to chats
+                // Send signal to SELF
+                await signaling.sendSignal(user.id, user.id, 'offer', { isTest: true, sdp: 'test-sdp', type: 'offer' });
+
+              } catch (e: any) {
+                alert(`❌ FAILED: ${e.message}`);
+              }
+            }}
+            className="w-full bg-purple-600/10 text-purple-500 border border-purple-500/20 font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-purple-600 hover:text-white transition-all mb-3"
+          >
+            Test Signaling (Self-Ping)
+          </button>
+          <button
+            onClick={async () => {
+              try {
+                alert("Syncing Contact List...");
+                // 1. Get local contacts
+                const contacts = await import('../services/database').then(m => m.DB.getContacts());
+                let updatedCount = 0;
+                const updatedContacts = [];
+
+                // 2. Fetch fresh data for each
+                for (const c of contacts) {
+                  const fresh = await cloudSync.getProfileByPhone(c.phone);
+                  if (fresh && fresh.id !== c.id) {
+                    updatedContacts.push({ ...c, id: fresh.id, avatar: fresh.avatar || c.avatar });
+                    updatedCount++;
                   } else {
-                    alert("✅ Contacts are already up to date.");
+                    updatedContacts.push(c);
                   }
-                } catch (e: any) {
-                  alert(`❌ Error: ${e.message}`);
                 }
-              }}
-              className="w-full bg-blue-600/10 text-blue-500 border border-blue-500/20 font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all"
-            >
-              Resync Contacts
-            </button>
 
-            <button
-              onClick={async () => {
-                if (confirm("This will completely reset the app cache and reload to fix stuck updates. Continue?")) {
-                  if ('serviceWorker' in navigator) {
-                    const registrations = await navigator.serviceWorker.getRegistrations();
-                    for (let registration of registrations) {
-                      await registration.unregister();
-                    }
+                // 3. Save back if changes found
+                if (updatedCount > 0) {
+                  await import('../services/database').then(m => m.DB.saveContacts(updatedContacts));
+                  alert(`✅ FIXED: Updated ${updatedCount} contacts with new IDs.\nTry sending messages now.`);
+                  window.location.reload(); // Reload to apply to chats
+                } else {
+                  alert("✅ Contacts are already up to date.");
+                }
+              } catch (e: any) {
+                alert(`❌ Error: ${e.message}`);
+              }
+            }}
+            className="w-full bg-blue-600/10 text-blue-500 border border-blue-500/20 font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all"
+          >
+            Resync Contacts
+          </button>
+
+          <button
+            onClick={async () => {
+              if (confirm("This will completely reset the app cache and reload to fix stuck updates. Continue?")) {
+                if ('serviceWorker' in navigator) {
+                  const registrations = await navigator.serviceWorker.getRegistrations();
+                  for (let registration of registrations) {
+                    await registration.unregister();
                   }
-                  caches.keys().then(async (names) => {
-                    await Promise.all(names.map(name => caches.delete(name)));
-                    window.location.reload();
-                  });
                 }
-              }}
-              className="w-full bg-red-600/10 text-red-500 border border-red-500/20 font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all mt-3"
-            >
-              ⚠️ RESET APP CACHE (Fix Bugs)
-            </button>
-          </div>
-        </div>
-
-        <div className="text-center py-8">
-          <div className="flex items-center justify-center space-x-2 mb-2">
-            <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
-            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.4em]">Zylos Global Messenger • v{APP_VERSION}</p>
-          </div>
-          <p className="text-[8px] text-zinc-800 font-bold uppercase">Decentralized Neural Network Active</p>
+                caches.keys().then(async (names) => {
+                  await Promise.all(names.map(name => caches.delete(name)));
+                  window.location.reload();
+                });
+              }
+            }}
+            className="w-full bg-red-600/10 text-red-500 border border-red-500/20 font-bold py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all mt-3"
+          >
+            ⚠️ RESET APP CACHE (Fix Bugs)
+          </button>
         </div>
       </div>
+
+      <div className="text-center py-8">
+        <div className="flex items-center justify-center space-x-2 mb-2">
+          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+          <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.4em]">Zylos Global Messenger • v{APP_VERSION}</p>
+        </div>
+        <p className="text-[8px] text-zinc-800 font-bold uppercase">Decentralized Neural Network Active</p>
+      </div>
     </div>
+    </div >
   );
 };
 
