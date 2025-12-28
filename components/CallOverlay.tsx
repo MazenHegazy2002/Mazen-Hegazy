@@ -87,13 +87,28 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         // Update senders (simple replace)
         if (peerRef.current) {
           const videoTrack = stream.getVideoTracks()[0];
-          const sender = peerRef.current.getSenders().find(s => s.track?.kind === 'video');
-          if (sender) {
-            sender.replaceTrack(videoTrack);
+          const audioTrack = stream.getAudioTracks()[0];
+
+          const senders = peerRef.current.getSenders();
+          const videoSender = senders.find(s => s.track?.kind === 'video');
+          const audioSender = senders.find(s => s.track?.kind === 'audio');
+
+          // Replace or Add Video Track
+          if (videoSender) {
+            videoSender.replaceTrack(videoTrack);
           } else {
-            console.log("Adding new video track, triggering renegotiation...");
+            console.log("Adding new video track...");
             peerRef.current.addTrack(videoTrack, stream);
-            // Trigger Renegotiation
+          }
+
+          // Replace Audio Track (Keep them in sync on the same stream)
+          if (audioSender && audioTrack) {
+            console.log("Syncing audio track to new stream...");
+            audioSender.replaceTrack(audioTrack);
+          }
+
+          // Trigger Renegotiation if needed (only if we added a track, but doing it always is safer for "Call Type" sync)
+          if (!videoSender) {
             const offer = await peerRef.current.createOffer();
             await peerRef.current.setLocalDescription(offer);
             signaling.sendSignal(currentUser.id, recipient.id, 'offer', { type: offer.type, sdp: offer.sdp, callType: 'video' });
@@ -148,9 +163,10 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
       // Handle remote stream
       peer.ontrack = (event) => {
-        console.log("Got Remote Track:", event.track.kind, event.streams[0].id);
-
         const stream = event.streams[0];
+        console.log(`Got Remote Stream (${event.track.kind}):`, stream.id);
+        console.log(`- Audio Tracks: ${stream.getAudioTracks().length}`);
+        console.log(`- Video Tracks: ${stream.getVideoTracks().length}`);
 
         // AUTO-DETECT VIDEO: If this is a video track, switch UI
         if (event.track.kind === 'video') {
@@ -159,31 +175,27 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         }
 
         // Bind Video Element (if needed and available)
-        if (remoteVideoRef.current && !remoteVideoRef.current.srcObject) {
-          console.log("Binding Remote Video Element");
-          remoteVideoRef.current.srcObject = stream;
-        } else if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== stream) {
-          // If stream changed
-          console.log("Updating Remote Video Stream");
-          remoteVideoRef.current.srcObject = stream;
+        if (remoteVideoRef.current) {
+          // Always update video ref if the stream has video tracks
+          if (stream.getVideoTracks().length > 0) {
+            if (remoteVideoRef.current.srcObject !== stream) {
+              console.log("Binding/Video Updating Remote Video Element");
+              remoteVideoRef.current.srcObject = stream;
+            }
+          }
         }
 
         // Bind Audio Element (Safely)
         if (audioRef.current) {
-          if (!audioRef.current.srcObject) {
-            console.log("Binding Remote Audio Element (First Time)");
-            audioRef.current.srcObject = stream;
-            audioRef.current.play().catch(e => console.error("Audio Play Error:", e));
-          } else if (audioRef.current.srcObject !== stream) {
-            console.log("Binding Remote Audio Element (Stream Changed)");
-            audioRef.current.srcObject = stream;
-            audioRef.current.play().catch(e => console.error("Audio Play Error (Update):", e));
-          } else {
-            // Already bound, just ensure playing
-            if (audioRef.current.paused) {
-              console.log("Audio paused, forcing play");
-              audioRef.current.play().catch(e => console.error("Audio Resume Error:", e));
+          // CRITICAL FIX: Only bind if this stream ACTUALLY has audio
+          if (stream.getAudioTracks().length > 0) {
+            if (audioRef.current.srcObject !== stream) {
+              console.log("Binding Remote Audio Element (Found Audio Track)");
+              audioRef.current.srcObject = stream;
+              audioRef.current.play().catch(e => console.error("Audio Play Error:", e));
             }
+          } else {
+            console.log("Ignoring stream for Audio (No audio tracks found)");
           }
         }
 
