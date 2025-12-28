@@ -16,6 +16,15 @@ import { NotificationService } from './services/notificationService';
 import { signaling } from './services/signaling';
 
 const App: React.FC = () => {
+  // NUCLEAR OPTION TO PROVE VERSION
+  useEffect(() => {
+    // Only show once per session
+    if (!sessionStorage.getItem('v3.3_alerted')) {
+      alert("⚠️ VERSION 3.3 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
+      sessionStorage.setItem('v3.3_alerted', 'true');
+    }
+  }, []);
+
   const [isBooting, setIsBooting] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentView, setCurrentView] = useState<AppView>('chats');
