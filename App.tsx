@@ -20,8 +20,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Only show once per session
     if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 3.5 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
-      sessionStorage.setItem('v3.5_alerted', 'true');
+      alert("⚠️ VERSION 3.6 LOADED ⚠️\n\nIf you see this, the new code is active.\nGo to Settings -> Diagnostics now.");
+      sessionStorage.setItem('v3.6_alerted', 'true');
     }
   }, []);
 
@@ -136,6 +136,18 @@ const App: React.FC = () => {
       const senderId = payload.sender_id;
       const chatId = payload.chat_id;
 
+      // INTERCEPT SIGNALS
+      if (payload.type === MessageType.SIGNAL) {
+        try {
+          const body = JSON.parse(payload.content);
+          console.log("[App] Intercepted Signal Message:", body.type);
+          signaling.onIncomingSignal(senderId, body.type, body.data);
+        } catch (e) {
+          console.error("[App] Failed to parse signal:", e);
+        }
+        return; // Do not add to chat list
+      }
+
       const newMessage: Message = {
         id: String(payload.id),
         senderId: senderId,
@@ -174,7 +186,7 @@ const App: React.FC = () => {
       });
     });
 
-    return () => { if (unsubscribe) unsubscribe(); };
+    return () => { if (unsubscribeMessages) unsubscribeMessages(); };
   }, [isLoggedIn, currentUser.id, users]);
 
   const handlePlayVoice = (message: Message, senderName: string, senderAvatar: string) => {

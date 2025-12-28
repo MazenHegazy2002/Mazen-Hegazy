@@ -4,7 +4,8 @@ export enum MessageType {
   VOICE = 'VOICE',
   STICKER = 'STICKER',
   IMAGE = 'IMAGE',
-  SYSTEM = 'SYSTEM'
+  SYSTEM = 'SYSTEM',
+  SIGNAL = 'SIGNAL'
 }
 
 export enum MessageStatus {
