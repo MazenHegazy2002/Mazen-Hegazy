@@ -20,9 +20,9 @@ const App: React.FC = () => {
   // NUCLEAR OPTION TO PROVE VERSION
   useEffect(() => {
     // Only show once per session
-    if (!sessionStorage.getItem('v4.19_alerted')) {
-      alert("⚠️ VERSION 4.19 - UNIFIED STREAM ⚠️\n\n- FIXED AUDIO LOSS\n- FIXED VIDEO OVERWRITE\n- STABLE CONNECTION\n\nPlease screenshot the DEBUG LOGS.");
-      sessionStorage.setItem('v4.19_alerted', 'true');
+    if (!sessionStorage.getItem('v4.20_alerted')) {
+      alert("⚠️ VERSION 4.20 - MANUAL AUDIO RESCUE ⚠️\n\n- ADDED 'TAP TO UNMUTE' BUTTON\n- FIXED AUTOPLAY BLOCK\n- MONITORING TRACKS\n\nPlease screenshot the DEBUG LOGS.");
+      sessionStorage.setItem('v4.20_alerted', 'true');
     }
   }, []);
 

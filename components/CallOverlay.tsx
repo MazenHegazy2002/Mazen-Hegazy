@@ -11,29 +11,16 @@ interface CallOverlayProps {
   isIncoming?: boolean;
 }
 
-// FINAL STABLE CONFIGURATION - RELAY + GOOGLE
+// GOOGLE STUN ONLY - FASTEST FOR P2P
 const configuration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    }
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
   ],
   iceCandidatePoolSize: 10,
-  iceTransportPolicy: 'all' as RTCIceTransportPolicy
 };
 
 const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type, offerData, onClose, isIncoming = false }) => {
@@ -41,12 +28,15 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
   const [currentType, setCurrentType] = useState(type);
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
+  const [showAutoplayBtn, setShowAutoplayBtn] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
 
   // UNIFIED STREAM STATE
-  // We use a ref to hold the tracks stably, but state to trigger re-renders if needed
   const remoteStreamRef = useRef<MediaStream>(new MediaStream());
-  const [forceUpdate, setForceUpdate] = useState(0); // Hack to force re-render
+  const [forceUpdate, setForceUpdate] = useState(0);
+
+  // VANILLA AUDIO PLAYER (Bypasses React DOM issues)
+  const remoteAudioHelper = useRef<HTMLAudioElement>(new Audio());
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev.slice(-4), msg]);
@@ -55,7 +45,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
@@ -64,41 +53,65 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     let interval: number;
     if (callState === 'connected') {
       interval = window.setInterval(() => setDuration(prev => prev + 1), 1000);
+
+      // MONITOR: Log Track Counts every 2s
+      const monitor = setInterval(() => {
+        const tracks = remoteStreamRef.current.getTracks();
+        const audioTracks = remoteStreamRef.current.getAudioTracks();
+        const videoTracks = remoteStreamRef.current.getVideoTracks();
+        console.log(`[Monitor] Tracks: ${tracks.length} (A:${audioTracks.length} V:${videoTracks.length}) ICE:${peerRef.current?.iceConnectionState}`);
+
+        if (tracks.length > 0 && peerRef.current?.iceConnectionState === 'connected') {
+          // Try to force play if not playing
+          if (remoteAudioHelper.current.paused) {
+            addLog("Auto-Retrying Audio...");
+            remoteAudioHelper.current.play().catch(() => setShowAutoplayBtn(true));
+          }
+        }
+      }, 2000);
+
+      return () => clearInterval(monitor);
     }
     return () => clearInterval(interval);
   }, [callState]);
 
-  // Sync Mute State
+  // Initial Audio Setup
   useEffect(() => {
-    if (localStreamRef.current) {
-      console.log(`[CallOverlay] Toggling Mute: ${isMuted}`);
-      localStreamRef.current.getAudioTracks().forEach(track => {
-        track.enabled = !isMuted;
-      });
-    }
-  }, [isMuted]);
+    remoteAudioHelper.current.autoplay = true;
+    remoteAudioHelper.current.playsInline = true;
+    remoteAudioHelper.current.volume = 1.0;
 
-  // Bind Remote Stream to Elements
+    return () => {
+      remoteAudioHelper.current.pause();
+      remoteAudioHelper.current.srcObject = null;
+    };
+  }, []);
+
+  // Bind Remote Stream
   const bindRemoteMedia = () => {
-    // We bind the SAME stream to both.
-    // The browser handles playing audio from a stream even if attached to a video element.
-    // But specific <audio> element ensures audio plays if video element is hidden.
-    if (audioRef.current && remoteStreamRef.current) {
-      if (audioRef.current.srcObject !== remoteStreamRef.current) {
-        addLog("Binding Audio Element");
-        audioRef.current.srcObject = remoteStreamRef.current;
-        audioRef.current.play().catch(e => console.error("Audio Play Err", e));
-      }
+    // 1. Bind Audio Helper
+    if (remoteAudioHelper.current.srcObject !== remoteStreamRef.current) {
+      addLog("Binding Audio Helper");
+      remoteAudioHelper.current.srcObject = remoteStreamRef.current;
+      remoteAudioHelper.current.play()
+        .then(() => addLog("Audio Playing!"))
+        .catch(e => {
+          console.error("Audio Autoplay Blocked:", e);
+          addLog("Autoplay Blocked!");
+          setShowAutoplayBtn(true);
+        });
     }
 
+    // 2. Bind Video Element
     if (currentType === 'video' && remoteVideoRef.current && remoteStreamRef.current) {
-      addLog("Binding Video Element");
-      remoteVideoRef.current.srcObject = remoteStreamRef.current;
-      remoteVideoRef.current.play().catch(e => console.error("Video Play Err", e));
+      if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+        addLog("Binding Video Element");
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+        remoteVideoRef.current.play().catch(e => console.error("Video Play Err", e));
+      }
     }
   };
 
-  // Re-bind whenever the stream changes or type changes
   useEffect(() => {
     bindRemoteMedia();
   }, [currentType, forceUpdate]);
@@ -121,48 +134,36 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     if (newType === 'video') {
       try {
         addLog("Upgrading to Video...");
-        // 1. Get new stream with Video
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user' },
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         });
 
-        // 2. Update Local Refs
         localStreamRef.current = stream;
         stream.getAudioTracks().forEach(track => track.enabled = !isMuted);
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
-        // 3. Update Peer Connection Tracks
         if (peerRef.current) {
           const videoTrack = stream.getVideoTracks()[0];
           const audioTrack = stream.getAudioTracks()[0];
-          const senders = peerRef.current.getSenders();
-
-          const videoSender = senders.find(s => s.track && s.track.kind === 'video') || senders.find(s => s.track === null && s.dtmf); // Fallback logic difficult
-          // Better: Find transceiver
           const transceivers = peerRef.current.getTransceivers();
-          const videoTransceiver = transceivers.find(t => t.sender.track?.kind === 'video' || t.receiver.track?.kind === 'video');
 
+          // Video Transceiver
+          const videoTransceiver = transceivers.find(t => t.sender.track?.kind === 'video' || t.receiver.track?.kind === 'video');
           if (videoTransceiver && videoTransceiver.sender) {
-            addLog("Replacing Video Track");
             await videoTransceiver.sender.replaceTrack(videoTrack);
-            // Ensure it's sending
             videoTransceiver.direction = 'sendrecv';
           } else {
-            // Fallback for missing transceiver (shouldn't happen with our init)
-            addLog("Adding new Video Track");
             peerRef.current.addTrack(videoTrack, stream);
           }
 
-          // Update Audio Track
-          const audioSender = senders.find(s => s.track?.kind === 'audio');
-          if (audioSender && audioTrack) {
-            audioSender.replaceTrack(audioTrack);
+          // Audio Transceiver
+          const audioTransceiver = transceivers.find(t => t.sender.track?.kind === 'audio' || t.receiver.track?.kind === 'audio');
+          if (audioTransceiver && audioTransceiver.sender) {
+            audioTransceiver.sender.replaceTrack(audioTrack);
           }
 
-          // Renegotiate to ensure the other side knows we are sending video now
-          // (Only needed if we changed direction or added track)
-          addLog("Negotiating Video Upgrade...");
+          addLog("Negotiating Video...");
           const offer = await peerRef.current.createOffer();
           await peerRef.current.setLocalDescription(offer);
           signaling.sendSignal(currentUser.id, recipient.id, 'offer', { type: offer.type, sdp: offer.sdp, callType: 'video' });
@@ -171,7 +172,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         addLog("Video Upgrade Err: " + e.message);
       }
     } else {
-      // Downgrade logic... stop video tracks
       if (localStreamRef.current) {
         localStreamRef.current.getVideoTracks().forEach(t => t.stop());
       }
@@ -194,7 +194,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     try {
       addLog("Initializing Peer...");
 
-      // 1. Get Local Media (Always get Audio, Video depends on intent)
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         video: currentType === 'video' ? { facingMode: 'user' } : false
@@ -210,21 +209,10 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       const peer = new RTCPeerConnection(configuration);
       peerRef.current = peer;
 
-      // 2. Add Transceivers (Explicit Control)
-      // ALWAYS add both transceivers, even if we don't have video yet.
-      // This creates the 'm=' lines in SDP so we can upgrade later without magic.
-
-      // Audio: Always sendrecv
+      // EXPLICIT TRANSCEIVERS
       peer.addTransceiver('audio', { direction: 'sendrecv', streams: [stream] });
-
-      // Video: If we have it, sendrecv. If not, recvonly (listening) or inactive?
-      // Best to do 'sendrecv' but with no track if we want to be ready?
-      // Actually, passing `streams: [stream]` when no video track exists in stream results in a sender with no track.
-      // That's perfect.
       peer.addTransceiver('video', { direction: 'sendrecv', streams: [stream] });
 
-
-      // 3. Monitor Connectivity
       peer.onconnectionstatechange = () => {
         addLog(`Conn: ${peer.connectionState}`);
         if (peer.connectionState === 'connected') setCallState('connected');
@@ -234,18 +222,12 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         if (peer.iceConnectionState === 'failed') peer.restartIce();
       };
 
-      // 4. Handle Remote Tracks (THE FIX)
       peer.ontrack = (event) => {
         const { track } = event;
         addLog(`Got Track: ${track.kind}`);
 
-        // Add to our UNIFIED stream
+        // UNIFIED STREAM
         remoteStreamRef.current.addTrack(track);
-
-        // If track ends, remove it? usually automatic.
-        track.onended = () => { addLog(`Remote ${track.kind} ended`); };
-
-        // Force UI update
         setForceUpdate(prev => prev + 1);
 
         if (track.kind === 'video') setCurrentType('video');
@@ -267,7 +249,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
           const answer = await peerRef.current.createAnswer();
           await peerRef.current.setLocalDescription(answer);
           signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
-
           if (data.callType === 'video') setCurrentType('video');
 
         } else if (type === 'answer') {
@@ -314,6 +295,15 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     await initializePeer(offerData);
   };
 
+  const handleManualPlay = () => {
+    remoteAudioHelper.current.play()
+      .then(() => {
+        setShowAutoplayBtn(false);
+        addLog("Manual Play Success");
+      })
+      .catch(e => addLog("Manual Play Fail"));
+  };
+
   const formatTime = (s: number) => {
     const mins = Math.floor(s / 60);
     const secs = s % 60;
@@ -323,15 +313,22 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
   return (
     <div className="fixed inset-0 z-[1000] bg-[#0b0d10] flex flex-col items-center justify-center animate-in fade-in duration-700">
 
-      {/* Persistent Audio Element - bound to unified stream */}
-      <audio ref={audioRef} autoPlay playsInline />
-
       {/* DEBUG LOGS */}
       <div className="absolute top-10 left-0 right-0 z-50 pointer-events-none p-4">
         <div className="bg-black/50 text-[#00ff00] font-mono text-[10px] p-2 rounded backdrop-blur max-w-sm mx-auto">
           {logs.map((log, i) => <div key={i}>{log}</div>)}
         </div>
       </div>
+
+      {/* AUTOPLAY RESCUE BUTTON */}
+      {showAutoplayBtn && (
+        <button
+          onClick={handleManualPlay}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[2000] bg-red-600 text-white font-bold px-8 py-4 rounded-full shadow-2xl animate-bounce"
+        >
+          TAP TO ENABLE AUDIO
+        </button>
+      )}
 
       {/* Remote Video */}
       {currentType === 'video' && (
