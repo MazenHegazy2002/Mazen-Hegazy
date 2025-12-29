@@ -20,9 +20,9 @@ const App: React.FC = () => {
   // NUCLEAR OPTION TO PROVE VERSION
   useEffect(() => {
     // Only show once per session
-    if (!sessionStorage.getItem('v4.21_alerted')) {
-      alert("⚠️ VERSION 4.21 - VIDEO REFRESH FIX ⚠️\n\n- FORCED VIDEO RESET\n- RESTORED TURN RELAYS\n- FIXED BLACK SCREEN\n\nPlease screenshot the DEBUG LOGS.");
-      sessionStorage.setItem('v4.21_alerted', 'true');
+    if (!sessionStorage.getItem('v4.22_alerted')) {
+      alert("⚠️ VERSION 4.22 - VIDEO FIX FINAL ⚠️\n\n- MUTED VIDEO FOR AUTOPLAY\n- HYBRID RELAY SYSTEM\n- SEPARATE AUDIO CHANNEL\n\nPlease screenshot the DEBUG LOGS.");
+      sessionStorage.setItem('v4.22_alerted', 'true');
     }
   }, []);
 

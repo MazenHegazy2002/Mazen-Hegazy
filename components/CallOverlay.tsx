@@ -12,12 +12,10 @@ interface CallOverlayProps {
 }
 
 // HYBRID CONFIG: GOOGLE STUN + OPENRELAY TURN
-// Essential for both speed (STUN) and firewall penetration (TURN)
 const configuration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    // OpenRelay (Free TURN)
     {
       urls: "turn:openrelay.metered.ca:80",
       username: "openrelayproject",
@@ -47,8 +45,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
   // UNIFIED STREAM STATE
   const remoteStreamRef = useRef<MediaStream>(new MediaStream());
-  // We use this key to FORCE the video element to destroy and recreate itself
-  // whenever we get real data. This fixes "black screen" issues.
   const [streamKey, setStreamKey] = useState(Date.now());
 
   // VANILLA AUDIO PLAYER
@@ -70,10 +66,11 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     if (callState === 'connected') {
       interval = window.setInterval(() => setDuration(prev => prev + 1), 1000);
 
-      // MONITOR
       const monitor = setInterval(() => {
         const tracks = remoteStreamRef.current.getTracks();
         console.log(`[Monitor] Tracks:${tracks.length} ICE:${peerRef.current?.iceConnectionState}`);
+
+        // Retry Audio if needed
         if (tracks.length > 0 && remoteAudioHelper.current.paused) {
           remoteAudioHelper.current.play().catch(() => setShowAutoplayBtn(true));
         }
@@ -83,7 +80,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     return () => clearInterval(interval);
   }, [callState]);
 
-  // Audio Init
   useEffect(() => {
     remoteAudioHelper.current.autoplay = true;
     return () => {
@@ -98,7 +94,9 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       // Only bind if we have tracks
       if (remoteStreamRef.current.getTracks().length > 0) {
         if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
-          addLog("Hard Binding Video...");
+          addLog("V4.22 BOUND VIDEO");
+          // CRITICAL: Muted allows autoplay without interaction
+          remoteVideoRef.current.muted = true;
           remoteVideoRef.current.srcObject = remoteStreamRef.current;
           remoteVideoRef.current.play().catch(e => console.error("Video Play Err:", e));
         }
@@ -196,6 +194,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       const peer = new RTCPeerConnection(configuration);
       peerRef.current = peer;
 
+      // Always sendrecv for both to be ready
       peer.addTransceiver('audio', { direction: 'sendrecv', streams: [stream] });
       peer.addTransceiver('video', { direction: 'sendrecv', streams: [stream] });
 
@@ -214,11 +213,12 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
         remoteStreamRef.current.addTrack(track);
 
-        // Bind Audio Immediately
+        // Bind Audio Immediately if not already bound
         if (remoteAudioHelper.current.srcObject !== remoteStreamRef.current) {
           remoteAudioHelper.current.srcObject = remoteStreamRef.current;
-          remoteAudioHelper.current.play().catch(() => setShowAutoplayBtn(true));
         }
+        // Force play regardless
+        remoteAudioHelper.current.play().catch(() => setShowAutoplayBtn(true));
 
         // FORCE VIDEO UPDATE
         setStreamKey(Date.now());
@@ -314,13 +314,14 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         </button>
       )}
 
-      {/* Remote Video - KEY PROP FORCED RESET */}
+      {/* Remote Video - MUTED FOR AUTOPLAY */}
       {currentType === 'video' && (
         <video
           key={streamKey}
           ref={remoteVideoRef}
           autoPlay
           playsInline
+          muted
           className="absolute inset-0 w-full h-full object-cover"
         />
       )}
