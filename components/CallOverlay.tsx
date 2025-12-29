@@ -114,7 +114,11 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     if (newType === 'video') {
       try {
         addLog("Upgrading to Video...");
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+        // ECHO CANCELLATION IS CRITICAL
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
 
         // Update local ref and apply current mute state
         localStreamRef.current = stream;
@@ -150,7 +154,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
           if (!videoSender) {
             addLog("Negotiating Video...");
             // USE ICE RESTART to ensure clean connection for new tracks
-            const offer = await peerRef.current.createOffer({ iceRestart: true });
+            const offer = await peerRef.current.createOffer({ iceRestart: true, offerToReceiveAudio: true, offerToReceiveVideo: true });
             await peerRef.current.setLocalDescription(offer);
             signaling.sendSignal(currentUser.id, recipient.id, 'offer', { type: offer.type, sdp: offer.sdp, callType: 'video' });
           }
@@ -164,6 +168,8 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       if (localStreamRef.current) {
         localStreamRef.current.getVideoTracks().forEach(t => t.stop());
       }
+      // Re-acquire clean audio only stream? (Optional, maybe overkill, current logic keeps running video stream but ignores it? NO, we stopped tracks.)
+      // It's safer to just keep using the audio track from the getUserMedia call we already have, assuming we didn't stop audio.
     }
   };
 
@@ -174,8 +180,10 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       }
 
       console.log("Getting User Media for type:", currentType);
+
+      // FIX ECHO: Enable AEC
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         video: currentType === 'video' ? { facingMode: 'user' } : false
       });
 
@@ -195,6 +203,10 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       peer.oniceconnectionstatechange = () => {
         console.log(`ICE State: ${peer.iceConnectionState}`);
         if (peer.iceConnectionState === 'connected') setCallState('connected');
+        if (peer.iceConnectionState === 'failed') {
+          addLog("ICE Failed! Retrying...");
+          peer.restartIce();
+        }
       };
 
       // Add local tracks
@@ -230,16 +242,19 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         if (type === 'offer') {
           // HANDLE RENEGOTIATION (Adding Video mid-call)
           console.log("Renegotiating connection (Incoming Offer)...");
-          await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
+          // Clean data before use
+          const desc = new RTCSessionDescription({ type: data.type, sdp: data.sdp });
+          await peerRef.current.setRemoteDescription(desc);
 
-          const answer = await peerRef.current.createAnswer();
+          const answer = await peerRef.current.createAnswer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
           await peerRef.current.setLocalDescription(answer);
           signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
 
           if (data.callType === 'video') setCurrentType('video');
 
         } else if (type === 'answer') {
-          await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
+          const desc = new RTCSessionDescription({ type: data.type, sdp: data.sdp });
+          await peerRef.current.setRemoteDescription(desc);
         } else if (type === 'candidate') {
           await peerRef.current.addIceCandidate(new RTCIceCandidate(data));
         } else if (type === 'end') {
@@ -252,13 +267,17 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       // SIGNALING LOGIC
       if (incomingOffer) {
         // WE ARE ANSWERING
-        await peer.setRemoteDescription(new RTCSessionDescription(incomingOffer));
-        const answer = await peer.createAnswer();
+        addLog("Answering Call...");
+        // Clean incoming data
+        const desc = new RTCSessionDescription({ type: incomingOffer.type, sdp: incomingOffer.sdp });
+        await peer.setRemoteDescription(desc);
+        const answer = await peer.createAnswer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
         await peer.setLocalDescription(answer);
         signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
       } else {
         // WE ARE CALLING
-        const offer = await peer.createOffer();
+        addLog("Calling...");
+        const offer = await peer.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: currentType === 'video' });
         await peer.setLocalDescription(offer);
         // Clean the offer object to ensure it's serializable and include callType
         const signalData = { type: offer.type, sdp: offer.sdp, callType: currentType };
