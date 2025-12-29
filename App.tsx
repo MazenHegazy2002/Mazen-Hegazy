@@ -17,11 +17,12 @@ import { signaling } from './services/signaling';
 
 const App: React.FC = () => {
   // NUCLEAR OPTION TO PROVE VERSION
+  // NUCLEAR OPTION TO PROVE VERSION
   useEffect(() => {
     // Only show once per session
-    if (!sessionStorage.getItem('v3.3_alerted')) {
-      alert("⚠️ VERSION 4.12 LOADED ⚠️\n\n- RESTORED DEBUG LOGS\n- Added Connection Reset (ICE Restart)\n\nPlease screenshot the GREEN TEXT.");
-      sessionStorage.setItem('v4.12_alerted', 'true');
+    if (!sessionStorage.getItem('v4.13_alerted')) {
+      alert("⚠️ VERSION 4.13 - VIDEO FIX ⚠️\n\n- Fixed Black Screen Video\n- Improved Audio Sync\n\nPlease screenshot if issues persist.");
+      sessionStorage.setItem('v4.13_alerted', 'true');
     }
   }, []);
 
