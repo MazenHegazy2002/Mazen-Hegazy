@@ -11,14 +11,28 @@ interface CallOverlayProps {
   isIncoming?: boolean;
 }
 
-// GOOGLE STUN ONLY - FASTEST FOR P2P
+// HYBRID CONFIG: GOOGLE STUN + OPENRELAY TURN
+// Essential for both speed (STUN) and firewall penetration (TURN)
 const configuration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
+    // OpenRelay (Free TURN)
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    }
   ],
   iceCandidatePoolSize: 10,
 };
@@ -33,9 +47,11 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
   // UNIFIED STREAM STATE
   const remoteStreamRef = useRef<MediaStream>(new MediaStream());
-  const [forceUpdate, setForceUpdate] = useState(0);
+  // We use this key to FORCE the video element to destroy and recreate itself
+  // whenever we get real data. This fixes "black screen" issues.
+  const [streamKey, setStreamKey] = useState(Date.now());
 
-  // VANILLA AUDIO PLAYER (Bypasses React DOM issues)
+  // VANILLA AUDIO PLAYER
   const remoteAudioHelper = useRef<HTMLAudioElement>(new Audio());
 
   const addLog = (msg: string) => {
@@ -54,67 +70,41 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     if (callState === 'connected') {
       interval = window.setInterval(() => setDuration(prev => prev + 1), 1000);
 
-      // MONITOR: Log Track Counts every 2s
+      // MONITOR
       const monitor = setInterval(() => {
         const tracks = remoteStreamRef.current.getTracks();
-        const audioTracks = remoteStreamRef.current.getAudioTracks();
-        const videoTracks = remoteStreamRef.current.getVideoTracks();
-        console.log(`[Monitor] Tracks: ${tracks.length} (A:${audioTracks.length} V:${videoTracks.length}) ICE:${peerRef.current?.iceConnectionState}`);
-
-        if (tracks.length > 0 && peerRef.current?.iceConnectionState === 'connected') {
-          // Try to force play if not playing
-          if (remoteAudioHelper.current.paused) {
-            addLog("Auto-Retrying Audio...");
-            remoteAudioHelper.current.play().catch(() => setShowAutoplayBtn(true));
-          }
+        console.log(`[Monitor] Tracks:${tracks.length} ICE:${peerRef.current?.iceConnectionState}`);
+        if (tracks.length > 0 && remoteAudioHelper.current.paused) {
+          remoteAudioHelper.current.play().catch(() => setShowAutoplayBtn(true));
         }
       }, 2000);
-
       return () => clearInterval(monitor);
     }
     return () => clearInterval(interval);
   }, [callState]);
 
-  // Initial Audio Setup
+  // Audio Init
   useEffect(() => {
     remoteAudioHelper.current.autoplay = true;
-    remoteAudioHelper.current.playsInline = true;
-    remoteAudioHelper.current.volume = 1.0;
-
     return () => {
       remoteAudioHelper.current.pause();
       remoteAudioHelper.current.srcObject = null;
     };
   }, []);
 
-  // Bind Remote Stream
-  const bindRemoteMedia = () => {
-    // 1. Bind Audio Helper
-    if (remoteAudioHelper.current.srcObject !== remoteStreamRef.current) {
-      addLog("Binding Audio Helper");
-      remoteAudioHelper.current.srcObject = remoteStreamRef.current;
-      remoteAudioHelper.current.play()
-        .then(() => addLog("Audio Playing!"))
-        .catch(e => {
-          console.error("Audio Autoplay Blocked:", e);
-          addLog("Autoplay Blocked!");
-          setShowAutoplayBtn(true);
-        });
-    }
-
-    // 2. Bind Video Element
-    if (currentType === 'video' && remoteVideoRef.current && remoteStreamRef.current) {
-      if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
-        addLog("Binding Video Element");
-        remoteVideoRef.current.srcObject = remoteStreamRef.current;
-        remoteVideoRef.current.play().catch(e => console.error("Video Play Err", e));
+  // Video Binding Logic
+  useEffect(() => {
+    if (currentType === 'video' && remoteVideoRef.current) {
+      // Only bind if we have tracks
+      if (remoteStreamRef.current.getTracks().length > 0) {
+        if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+          addLog("Hard Binding Video...");
+          remoteVideoRef.current.srcObject = remoteStreamRef.current;
+          remoteVideoRef.current.play().catch(e => console.error("Video Play Err:", e));
+        }
       }
     }
-  };
-
-  useEffect(() => {
-    bindRemoteMedia();
-  }, [currentType, forceUpdate]);
+  }, [currentType, streamKey]);
 
 
   const stopCall = useCallback(() => {
@@ -148,7 +138,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
           const audioTrack = stream.getAudioTracks()[0];
           const transceivers = peerRef.current.getTransceivers();
 
-          // Video Transceiver
           const videoTransceiver = transceivers.find(t => t.sender.track?.kind === 'video' || t.receiver.track?.kind === 'video');
           if (videoTransceiver && videoTransceiver.sender) {
             await videoTransceiver.sender.replaceTrack(videoTrack);
@@ -157,7 +146,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
             peerRef.current.addTrack(videoTrack, stream);
           }
 
-          // Audio Transceiver
           const audioTransceiver = transceivers.find(t => t.sender.track?.kind === 'audio' || t.receiver.track?.kind === 'audio');
           if (audioTransceiver && audioTransceiver.sender) {
             audioTransceiver.sender.replaceTrack(audioTrack);
@@ -184,7 +172,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       for (const candidate of pendingCandidates.current) {
         try {
           await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (e) { console.error(e); }
+        } catch (e) { }
       }
       pendingCandidates.current = [];
     }
@@ -201,7 +189,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
 
       localStreamRef.current = stream;
       stream.getAudioTracks().forEach(t => t.enabled = !isMuted);
-
       if (localVideoRef.current && currentType === 'video') {
         localVideoRef.current.srcObject = stream;
       }
@@ -209,7 +196,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       const peer = new RTCPeerConnection(configuration);
       peerRef.current = peer;
 
-      // EXPLICIT TRANSCEIVERS
       peer.addTransceiver('audio', { direction: 'sendrecv', streams: [stream] });
       peer.addTransceiver('video', { direction: 'sendrecv', streams: [stream] });
 
@@ -226,9 +212,16 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         const { track } = event;
         addLog(`Got Track: ${track.kind}`);
 
-        // UNIFIED STREAM
         remoteStreamRef.current.addTrack(track);
-        setForceUpdate(prev => prev + 1);
+
+        // Bind Audio Immediately
+        if (remoteAudioHelper.current.srcObject !== remoteStreamRef.current) {
+          remoteAudioHelper.current.srcObject = remoteStreamRef.current;
+          remoteAudioHelper.current.play().catch(() => setShowAutoplayBtn(true));
+        }
+
+        // FORCE VIDEO UPDATE
+        setStreamKey(Date.now());
 
         if (track.kind === 'video') setCurrentType('video');
         setCallState('connected');
@@ -242,10 +235,9 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         if (!peerRef.current) return;
 
         if (type === 'offer') {
-          addLog("Got Offer (Renegotiate)");
+          addLog("Renegotiate (Offer)");
           await peerRef.current.setRemoteDescription(new RTCSessionDescription(data));
           await processBufferedCandidates();
-
           const answer = await peerRef.current.createAnswer();
           await peerRef.current.setLocalDescription(answer);
           signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
@@ -295,13 +287,9 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     await initializePeer(offerData);
   };
 
-  const handleManualPlay = () => {
-    remoteAudioHelper.current.play()
-      .then(() => {
-        setShowAutoplayBtn(false);
-        addLog("Manual Play Success");
-      })
-      .catch(e => addLog("Manual Play Fail"));
+  const manualPlay = () => {
+    remoteAudioHelper.current.play();
+    setShowAutoplayBtn(false);
   };
 
   const formatTime = (s: number) => {
@@ -313,33 +301,31 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
   return (
     <div className="fixed inset-0 z-[1000] bg-[#0b0d10] flex flex-col items-center justify-center animate-in fade-in duration-700">
 
-      {/* DEBUG LOGS */}
+      {/* Logs */}
       <div className="absolute top-10 left-0 right-0 z-50 pointer-events-none p-4">
         <div className="bg-black/50 text-[#00ff00] font-mono text-[10px] p-2 rounded backdrop-blur max-w-sm mx-auto">
           {logs.map((log, i) => <div key={i}>{log}</div>)}
         </div>
       </div>
 
-      {/* AUTOPLAY RESCUE BUTTON */}
       {showAutoplayBtn && (
-        <button
-          onClick={handleManualPlay}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[2000] bg-red-600 text-white font-bold px-8 py-4 rounded-full shadow-2xl animate-bounce"
-        >
+        <button onClick={manualPlay} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[2000] bg-red-600 text-white font-bold px-8 py-4 rounded-full shadow-2xl animate-bounce">
           TAP TO ENABLE AUDIO
         </button>
       )}
 
-      {/* Remote Video */}
+      {/* Remote Video - KEY PROP FORCED RESET */}
       {currentType === 'video' && (
         <video
+          key={streamKey}
           ref={remoteVideoRef}
-          autoPlay playsInline
+          autoPlay
+          playsInline
           className="absolute inset-0 w-full h-full object-cover"
         />
       )}
 
-      {/* Status Overlay */}
+      {/* Status */}
       {!(currentType === 'video' && callState === 'connected') && (
         <div className="relative z-10 flex flex-col items-center text-center px-6">
           <div className={`w-36 h-36 rounded-[2.5rem] border-4 p-1 mb-8 shadow-2xl transition-all duration-700 bg-zinc-800 ${callState === 'connected' ? 'border-blue-500 scale-105' : 'border-white/5 ' + (callState === 'ringing' ? 'animate-bounce' : 'animate-pulse')}`}>
@@ -359,7 +345,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         </div>
       )}
 
-      {/* Local Video PIP */}
+      {/* Local Video */}
       {currentType === 'video' && callState !== 'ringing' && (
         <div className="absolute top-8 right-8 w-32 h-48 rounded-2xl border-2 border-white/10 overflow-hidden shadow-2xl z-20">
           <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
