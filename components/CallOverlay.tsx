@@ -11,27 +11,16 @@ interface CallOverlayProps {
   isIncoming?: boolean;
 }
 
+// SIMPLIFIED & ROBUST CONFIGURATION
+// Focusing on Google's high-availability STUN servers.
+// Removed questionable public TURN servers that often cause timeouts.
 const configuration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun.services.mozilla.com' },
-    { urls: 'stun:global.stun.twilio.com:3478' },
-    {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    }
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
   ],
   iceCandidatePoolSize: 10,
 };
@@ -188,7 +177,11 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       // Store stream for Mute/Toggle operations
       localStreamRef.current = stream;
       // Ensure mute state is respected immediately
-      stream.getAudioTracks().forEach(track => track.enabled = !isMuted);
+      stream.getAudioTracks().forEach(track => {
+        track.enabled = !isMuted;
+        // Ensure tracks are robust?
+        track.onended = () => addLog("Local Track Ended");
+      });
 
       if (localVideoRef.current && currentType === 'video') {
         localVideoRef.current.srcObject = stream;
@@ -198,16 +191,23 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       peerRef.current = peer;
 
       // EXPLICIT TRANSCEIVERS - FORCE SENDRECV
-      // This ensures the SDP always has "m=audio" and "m=video" sections
       peer.addTransceiver('audio', { direction: 'sendrecv', streams: [stream] });
       peer.addTransceiver('video', { direction: 'sendrecv', streams: [stream] });
 
-      // Monitor Connection State
+      // Monitor Connection State (Newer API)
+      peer.onconnectionstatechange = () => {
+        addLog(`Conn: ${peer.connectionState}`);
+        if (peer.connectionState === 'connected') setCallState('connected');
+        if (peer.connectionState === 'failed') {
+          addLog("Connection Failed. Firewall?");
+        }
+      };
+
+      // Monitor ICE State (Legacy but useful)
       peer.oniceconnectionstatechange = () => {
         addLog(`ICE: ${peer.iceConnectionState}`);
-        if (peer.iceConnectionState === 'connected') setCallState('connected');
-        if (peer.iceConnectionState === 'failed') {
-          addLog("ICE Failed! Retrying...");
+        if (peer.iceConnectionState === 'failed' || peer.iceConnectionState === 'disconnected') {
+          addLog("ICE Retry...");
           peer.restartIce();
         }
       };
@@ -241,11 +241,12 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         if (!peerRef.current) return;
 
         if (type === 'offer') {
-          // HANDLE RENEGOTIATION (Adding Video mid-call)
+          // HANDLE RENEGOTIATION
           addLog("Renegotiate (Offer)");
           const desc = new RTCSessionDescription({ type: data.type, sdp: data.sdp });
           await peerRef.current.setRemoteDescription(desc);
 
+          // When answering a renegotiation, we must createAnswer
           const answer = await peerRef.current.createAnswer();
           await peerRef.current.setLocalDescription(answer);
           signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
@@ -257,7 +258,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
           const desc = new RTCSessionDescription({ type: data.type, sdp: data.sdp });
           await peerRef.current.setRemoteDescription(desc);
         } else if (type === 'candidate') {
-          // Don't spam logs with candidates
           await peerRef.current.addIceCandidate(new RTCIceCandidate(data));
         } else if (type === 'end') {
           addLog("Call Ended");
