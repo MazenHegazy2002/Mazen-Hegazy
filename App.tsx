@@ -20,9 +20,9 @@ const App: React.FC = () => {
   // NUCLEAR OPTION TO PROVE VERSION
   useEffect(() => {
     // Only show once per session
-    if (!sessionStorage.getItem('v4.16_alerted')) {
-      alert("⚠️ VERSION 4.16 - NETWORK FIX ⚠️\n\n- OPTIMIZED FOR LOCAL WIFI\n- REMOVED SLOW RELAYS\n\nPlease screenshot the DEBUG LOGS.");
-      sessionStorage.setItem('v4.16_alerted', 'true');
+    if (!sessionStorage.getItem('v4.17_alerted')) {
+      alert("⚠️ VERSION 4.17 - CANDIDATE BUFFER ⚠️\n\n- FIXED RACE CONDITION\n- LOGGING BUFFER FLUSH\n\nPlease screenshot the DEBUG LOGS.");
+      sessionStorage.setItem('v4.17_alerted', 'true');
     }
   }, []);
 

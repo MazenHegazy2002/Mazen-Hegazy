@@ -11,9 +11,6 @@ interface CallOverlayProps {
   isIncoming?: boolean;
 }
 
-// SIMPLIFIED & ROBUST CONFIGURATION
-// Focusing on Google's high-availability STUN servers.
-// Removed questionable public TURN servers that often cause timeouts.
 const configuration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -43,6 +40,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
   const audioRef = useRef<HTMLAudioElement>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
 
   useEffect(() => {
     let interval: number;
@@ -160,6 +158,20 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
     }
   };
 
+  const processBufferedCandidates = async () => {
+    if (pendingCandidates.current.length > 0 && peerRef.current?.remoteDescription) {
+      addLog(`Flushing ${pendingCandidates.current.length} candidates`);
+      for (const candidate of pendingCandidates.current) {
+        try {
+          await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.error("Candidate Error:", e);
+        }
+      }
+      pendingCandidates.current = [];
+    }
+  };
+
   const initializePeer = async (incomingOffer?: any) => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -179,7 +191,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       // Ensure mute state is respected immediately
       stream.getAudioTracks().forEach(track => {
         track.enabled = !isMuted;
-        // Ensure tracks are robust?
         track.onended = () => addLog("Local Track Ended");
       });
 
@@ -199,7 +210,7 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         addLog(`Conn: ${peer.connectionState}`);
         if (peer.connectionState === 'connected') setCallState('connected');
         if (peer.connectionState === 'failed') {
-          addLog("Connection Failed. Firewall?");
+          addLog("Conn Failed. Firewall?");
         }
       };
 
@@ -216,7 +227,6 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
       peer.ontrack = (event) => {
         const rStream = event.streams[0] || new MediaStream([event.track]);
         addLog(`Got Track: ${event.track.kind}`);
-        console.log(`Got Remote Stream (${event.track.kind}):`, rStream.id);
 
         setRemoteStream(rStream);
 
@@ -246,7 +256,9 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
           const desc = new RTCSessionDescription({ type: data.type, sdp: data.sdp });
           await peerRef.current.setRemoteDescription(desc);
 
-          // When answering a renegotiation, we must createAnswer
+          // Flush candidates if any arrived before this offer
+          await processBufferedCandidates();
+
           const answer = await peerRef.current.createAnswer();
           await peerRef.current.setLocalDescription(answer);
           signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
@@ -257,8 +269,19 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
           addLog("Got Answer");
           const desc = new RTCSessionDescription({ type: data.type, sdp: data.sdp });
           await peerRef.current.setRemoteDescription(desc);
+
+          // CRITICAL: Flush candidates that arrived before the answer
+          await processBufferedCandidates();
+
         } else if (type === 'candidate') {
-          await peerRef.current.addIceCandidate(new RTCIceCandidate(data));
+          if (peerRef.current.remoteDescription) {
+            await peerRef.current.addIceCandidate(new RTCIceCandidate(data));
+          } else {
+            // BUFFER CANDIDATES to avoid "Remote description not set" error
+            pendingCandidates.current.push(data);
+            // Don't log every single buffer to avoid spam, but maybe log first one
+            if (pendingCandidates.current.length === 1) addLog("Buffering Candidates...");
+          }
         } else if (type === 'end') {
           addLog("Call Ended");
           setCallState('ended');
@@ -273,6 +296,9 @@ const CallOverlay: React.FC<CallOverlayProps> = ({ recipient, currentUser, type,
         addLog("Sending Answer...");
         const desc = new RTCSessionDescription({ type: incomingOffer.type, sdp: incomingOffer.sdp });
         await peer.setRemoteDescription(desc);
+        // Flush valid candidates immediately
+        await processBufferedCandidates();
+
         const answer = await peer.createAnswer();
         await peer.setLocalDescription(answer);
         signaling.sendSignal(currentUser.id, recipient.id, 'answer', answer);
